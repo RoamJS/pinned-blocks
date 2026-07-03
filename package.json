@@ -1,0 +1,30 @@
+{
+  "name": "pinned-blocks",
+  "version": "1.0.0",
+  "description": "Keep selected child blocks pinned to the top of their parent.",
+  "main": "index.js",
+  "scripts": {
+    "postinstall": "patch-package",
+    "start": "samepage dev",
+    "prebuild:roam": "npm install",
+    "build:roam": "samepage build --dry",
+    "test": "samepage test"
+  },
+  "keywords": [
+    "roam",
+    "roam-research",
+    "roamjs",
+    "pinned-blocks"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "roamjs-components": "^0.86.4"
+  },
+  "devDependencies": {
+    "prettier": "^3.2.5",
+    "prettier-plugin-tailwindcss": "^0.6.11"
+  },
+  "samepage": {
+    "extends": "node_modules/roamjs-components/package.json"
+  }
+}

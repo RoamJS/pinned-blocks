@@ -1,0 +1,146 @@
+import { expect, test } from "@playwright/test";
+import {
+  addPinnedUid,
+  getDesiredChildOrder,
+  getPinnedParentUid,
+  normalizePinnedBlocksSettings,
+  ordersMatch,
+  prunePinsForParent,
+  removePinnedUid,
+  shouldRemovePinnedIndicator,
+} from "../src/utils/pins";
+
+test("normalizePinnedBlocksSettings parses, dedupes, and removes invalid entries", () => {
+  expect(
+    normalizePinnedBlocksSettings(
+      JSON.stringify({
+        parent123: ["block1234", "block1234", "bad", 42],
+        "bad parent": ["block5678"],
+        parent456: "not an array",
+      }),
+    ),
+  ).toEqual({
+    parent123: ["block1234"],
+  });
+});
+
+test("addPinnedUid appends a pin without mutating previous settings", () => {
+  const settings = { parent123: ["block1234"] };
+  const nextSettings = addPinnedUid({
+    settings,
+    parentUid: "parent123",
+    uid: "block5678",
+  });
+
+  expect(nextSettings).toEqual({
+    parent123: ["block1234", "block5678"],
+  });
+  expect(settings).toEqual({ parent123: ["block1234"] });
+});
+
+test("addPinnedUid moves a pin from an old parent to the new parent", () => {
+  expect(
+    addPinnedUid({
+      settings: {
+        parent123: ["block1234"],
+        parent456: ["block5678"],
+      },
+      parentUid: "parent456",
+      uid: "block1234",
+    }),
+  ).toEqual({
+    parent456: ["block5678", "block1234"],
+  });
+});
+
+test("removePinnedUid removes matching uids and prunes empty parents", () => {
+  expect(
+    removePinnedUid({
+      settings: {
+        parent123: ["block1234"],
+        parent456: ["block5678", "block9999"],
+      },
+      uid: "block1234",
+    }),
+  ).toEqual({
+    parent456: ["block5678", "block9999"],
+  });
+});
+
+test("pin lookups return parent ownership", () => {
+  const settings = {
+    parent123: ["block1234"],
+    parent456: ["block5678"],
+  };
+
+  expect(getPinnedParentUid({ uid: "block5678", settings })).toBe("parent456");
+  expect(getPinnedParentUid({ uid: "notpinned", settings })).toBeNull();
+});
+
+test("getDesiredChildOrder keeps pinned direct children first in pin order", () => {
+  expect(
+    getDesiredChildOrder({
+      childUids: ["regular1", "pinned2", "regular2", "pinned1"],
+      pinnedUids: ["pinned1", "pinned2", "missing"],
+    }),
+  ).toEqual(["pinned1", "pinned2", "regular1", "regular2"]);
+});
+
+test("ordersMatch compares ordered uid arrays", () => {
+  expect(ordersMatch(["a", "b"], ["a", "b"])).toBe(true);
+  expect(ordersMatch(["a", "b"], ["b", "a"])).toBe(false);
+  expect(ordersMatch(["a"], ["a", "b"])).toBe(false);
+});
+
+test("shouldRemovePinnedIndicator removes stale or unpinned markers", () => {
+  const pinnedUids = new Set(["pinned123", "pinned456"]);
+
+  expect(
+    shouldRemovePinnedIndicator({
+      pinnedUids,
+      renderedUid: "pinned123",
+      storedUid: "pinned123",
+    }),
+  ).toBe(false);
+  expect(
+    shouldRemovePinnedIndicator({
+      pinnedUids,
+      renderedUid: "pinned456",
+      storedUid: "pinned123",
+    }),
+  ).toBe(true);
+  expect(
+    shouldRemovePinnedIndicator({
+      pinnedUids,
+      renderedUid: "regular01",
+      storedUid: "regular01",
+    }),
+  ).toBe(true);
+  expect(
+    shouldRemovePinnedIndicator({
+      pinnedUids,
+      renderedUid: null,
+      storedUid: "pinned123",
+    }),
+  ).toBe(true);
+});
+
+test("prunePinsForParent removes pins that are no longer direct children", () => {
+  expect(
+    prunePinsForParent({
+      settings: {
+        parent123: ["block1234", "block5678"],
+        parent456: ["block9999"],
+      },
+      parentUid: "parent123",
+      directChildUids: ["block5678", "regular01"],
+    }),
+  ).toEqual({
+    settings: {
+      parent123: ["block5678"],
+      parent456: ["block9999"],
+    },
+    changed: true,
+    removedUids: ["block1234"],
+  });
+});

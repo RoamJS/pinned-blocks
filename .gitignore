@@ -1,0 +1,13 @@
+node_modules
+.vscode
+build
+coverage
+dist
+local
+out
+.env
+.DS_Store
+extension.js
+extension.js.map
+extension.js.LICENSE.txt
+skills

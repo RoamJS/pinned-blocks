@@ -2,6 +2,13 @@ export type PinnedBlocksByParent = Record<string, string[]>;
 
 export const STORAGE_KEY = "pinned-blocks-by-parent";
 export const UID_REGEX = /^[A-Za-z0-9_-]{9}$/;
+export const DAILY_NOTE_UID_REGEX = /^\d{2}-\d{2}-\d{4}$/;
+
+export const isValidPinnedBlockUid = (uid: string): boolean =>
+  UID_REGEX.test(uid);
+
+export const isValidPinnedParentUid = (uid: string): boolean =>
+  isValidPinnedBlockUid(uid) || DAILY_NOTE_UID_REGEX.test(uid);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -14,20 +21,22 @@ export const normalizePinnedBlocksSettings = (
 
   return Object.fromEntries(
     Object.entries(parsed)
-      .map(([parentUid, uids]) => [
+      .map(([parentUid, uids]): [string, string[]] => [
         parentUid,
         Array.isArray(uids)
           ? Array.from(
               new Set(
                 uids.filter(
                   (uid): uid is string =>
-                    typeof uid === "string" && UID_REGEX.test(uid),
+                    typeof uid === "string" && isValidPinnedBlockUid(uid),
                 ),
               ),
             )
           : [],
       ])
-      .filter(([parentUid, uids]) => UID_REGEX.test(parentUid) && uids.length),
+      .filter(
+        ([parentUid, uids]) => isValidPinnedParentUid(parentUid) && uids.length,
+      ),
   );
 };
 

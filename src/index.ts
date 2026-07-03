@@ -37,17 +37,44 @@ const INDICATOR_ICON_CLASS = "roamjs-pinned-blocks-indicator-icon";
 const BLUEPRINT_PIN_ICON_CLASS = "bp3-icon-pin";
 const UID_SUFFIX_REGEX = /[A-Za-z0-9_-]{9}$/;
 
+const getLocalStorageKey = (): string =>
+  `${STORAGE_KEY}:${window.roamAlphaAPI.graph.name}`;
+
+const isEmptySettings = (settings: PinnedBlocksByParent): boolean =>
+  !Object.keys(settings).length;
+
+const readLocalSettings = (): PinnedBlocksByParent => {
+  try {
+    return normalizePinnedBlocksSettings(
+      window.localStorage.getItem(getLocalStorageKey()),
+    );
+  } catch {
+    return {};
+  }
+};
+
+const writeLocalSettings = (settingsJson: string): void => {
+  try {
+    window.localStorage.setItem(getLocalStorageKey(), settingsJson);
+  } catch {
+    // Roam settings remain the source of truth when browser storage is unavailable.
+  }
+};
+
 const readSettings = ({
   extensionAPI,
 }: {
   extensionAPI: ExtensionAPI;
 }): PinnedBlocksByParent => {
   try {
-    return normalizePinnedBlocksSettings(
+    const extensionSettings = normalizePinnedBlocksSettings(
       extensionAPI.settings.get(STORAGE_KEY),
     );
+    if (!isEmptySettings(extensionSettings)) return extensionSettings;
+
+    return readLocalSettings();
   } catch {
-    return {};
+    return readLocalSettings();
   }
 };
 
@@ -148,6 +175,16 @@ export default runExtension(async ({ extensionAPI }) => {
   let indicatorTimeout: number | null = null;
   let suppressPrunedToastUntil = 0;
 
+  if (!isEmptySettings(currentSettings)) {
+    const settingsJson = JSON.stringify(currentSettings);
+    writeLocalSettings(settingsJson);
+    settingsWriteQueue = writeSettings({ extensionAPI, settingsJson }).catch(
+      (error) => {
+        console.error("Pinned Blocks failed to restore saved settings", error);
+      },
+    );
+  }
+
   const style = addStyle(
     `
       .${PINNED_BLOCK_CLASS} {
@@ -156,16 +193,16 @@ export default runExtension(async ({ extensionAPI }) => {
 
       .${INDICATOR_CLASS} {
         align-items: center;
-        color: var(--roamjs-pinned-blocks-indicator-color, #b36b00);
+        color: var(--roamjs-pinned-blocks-indicator-color, #5c7080);
         display: inline-flex;
-        height: var(--roamjs-pinned-blocks-indicator-size, 14px);
+        height: var(--roamjs-pinned-blocks-indicator-size, 13px);
         justify-content: center;
         left: var(--roamjs-pinned-blocks-indicator-left, -18px);
         opacity: var(--roamjs-pinned-blocks-indicator-opacity, 0.9);
         pointer-events: none;
         position: absolute;
-        top: var(--roamjs-pinned-blocks-indicator-top, 4px);
-        width: var(--roamjs-pinned-blocks-indicator-size, 14px);
+        top: var(--roamjs-pinned-blocks-indicator-top, 5px);
+        width: var(--roamjs-pinned-blocks-indicator-size, 13px);
         z-index: var(--roamjs-pinned-blocks-indicator-z-index, 1);
       }
 
@@ -175,9 +212,9 @@ export default runExtension(async ({ extensionAPI }) => {
 
       .${INDICATOR_ICON_CLASS} {
         color: currentColor;
-        font-size: var(--roamjs-pinned-blocks-indicator-size, 14px);
+        font-size: var(--roamjs-pinned-blocks-indicator-size, 13px);
         height: 100%;
-        line-height: var(--roamjs-pinned-blocks-indicator-size, 14px);
+        line-height: var(--roamjs-pinned-blocks-indicator-size, 13px);
         width: 100%;
       }
     `,
@@ -189,6 +226,7 @@ export default runExtension(async ({ extensionAPI }) => {
     scheduleIndicatorSync();
 
     const settingsJson = JSON.stringify(settings);
+    writeLocalSettings(settingsJson);
     settingsWriteQueue = settingsWriteQueue
       .catch(() => undefined)
       .then(() => writeSettings({ extensionAPI, settingsJson }))
@@ -297,6 +335,11 @@ export default runExtension(async ({ extensionAPI }) => {
     if (!pinnedUids.length) return;
 
     const currentChildUids = getDirectChildUids(parentUid);
+    if (!currentChildUids.length) {
+      const pinnedParentUids = pinnedUids.map(getParentUidByBlockUid);
+      if (pinnedParentUids.some((uid) => !uid || uid === parentUid)) return;
+    }
+
     const pruned = prunePinsForParent({
       settings: currentSettings,
       parentUid,

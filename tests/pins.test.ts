@@ -24,6 +24,27 @@ test("normalizePinnedBlocksSettings parses, dedupes, and removes invalid entries
   });
 });
 
+test("normalizePinnedBlocksSettings accepts already parsed settings", () => {
+  expect(
+    normalizePinnedBlocksSettings({
+      parent123: ["block1234"],
+      parent456: [],
+    }),
+  ).toEqual({
+    parent123: ["block1234"],
+  });
+});
+
+test("normalizePinnedBlocksSettings keeps daily note parent uids", () => {
+  expect(
+    normalizePinnedBlocksSettings({
+      "07-03-2026": ["block1234"],
+    }),
+  ).toEqual({
+    "07-03-2026": ["block1234"],
+  });
+});
+
 test("addPinnedUid appends a pin without mutating previous settings", () => {
   const settings = { parent123: ["block1234"] };
   const nextSettings = addPinnedUid({

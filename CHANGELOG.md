@@ -16,3 +16,4 @@
 - Fixed pins under daily note pages disappearing after reloading the extension.
 - Fixed pinned block settings so rapid pin and unpin actions save in order.
 - Fixed stale pin indicators that could remain when Roam reuses rendered block containers.
+- Fixed pin indicators being clipped when pinned pages are viewed in the right sidebar.

@@ -199,6 +199,11 @@ export default runExtension(async ({ extensionAPI }) => {
         width: var(--roamjs-pinned-blocks-indicator-size, 13px);
         z-index: var(--roamjs-pinned-blocks-indicator-z-index, 1);
       }
+
+      #right-sidebar .${PINNED_BLOCK_ACTIVE_CLASS}::before,
+      .roam-right-sidebar-content .${PINNED_BLOCK_ACTIVE_CLASS}::before {
+        left: var(--roamjs-pinned-blocks-sidebar-indicator-left, 5px);
+      }
     `,
     STYLE_ID,
   );

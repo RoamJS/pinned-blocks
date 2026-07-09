@@ -39,6 +39,7 @@ and can be adjusted with CSS variables:
 - `--roamjs-pinned-blocks-indicator-color`
 - `--roamjs-pinned-blocks-indicator-size`
 - `--roamjs-pinned-blocks-indicator-left`
+- `--roamjs-pinned-blocks-sidebar-indicator-left`
 - `--roamjs-pinned-blocks-indicator-top`
 - `--roamjs-pinned-blocks-indicator-opacity`
 - `--roamjs-pinned-blocks-indicator-z-index`

@@ -1,3 +1,4 @@
+# Temporarily disabled while the production publishing workflow is being repaired.
 name: Publish Extension
 on:
   workflow_dispatch:

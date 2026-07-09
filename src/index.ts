@@ -310,9 +310,6 @@ export default runExtension(async ({ extensionAPI }) => {
   async function enforceParentOrder(parentUid: string): Promise<void> {
     enforceTimeouts.delete(parentUid);
 
-    const pinnedUids = currentSettings[parentUid] || [];
-    if (!pinnedUids.length) return;
-
     const currentChildUids = getDirectChildUids(parentUid);
     const reconciled = reconcilePinsForParent({
       settings: currentSettings,
@@ -324,7 +321,7 @@ export default runExtension(async ({ extensionAPI }) => {
     if (reconciled.changed) {
       persistSettings(reconciled.settings);
       syncWatchers();
-      reconciled.movedParentUids.forEach(scheduleEnforceParent);
+      reconciled.affectedParentUids.forEach(scheduleEnforceParent);
       maybeToastRemovedPin(reconciled.removedUids.length);
     }
 

@@ -148,6 +148,54 @@ export const prunePinsForParent = ({
   return { settings: nextSettings, changed: true, removedUids };
 };
 
+const addUnique = (values: string[], value: string): string[] =>
+  values.includes(value) ? values : [...values, value];
+
+const removeUidFromParent = ({
+  settings,
+  parentUid,
+  uid,
+}: {
+  settings: PinnedBlocksByParent;
+  parentUid: string;
+  uid: string;
+}): void => {
+  const remainingUids = (settings[parentUid] || []).filter(
+    (pinnedUid) => pinnedUid !== uid,
+  );
+  if (remainingUids.length) {
+    settings[parentUid] = remainingUids;
+  } else {
+    delete settings[parentUid];
+  }
+};
+
+const getPinnedParentByUid = (
+  settings: PinnedBlocksByParent,
+): Map<string, string> => {
+  const pinnedParentByUid = new Map<string, string>();
+  Object.entries(settings).forEach(([parentUid, pinnedUids]) => {
+    pinnedUids.forEach((uid) => {
+      if (!pinnedParentByUid.has(uid)) pinnedParentByUid.set(uid, parentUid);
+    });
+  });
+  return pinnedParentByUid;
+};
+
+const settingsMatch = (
+  first: PinnedBlocksByParent,
+  second: PinnedBlocksByParent,
+): boolean => {
+  const firstParentUids = Object.keys(first);
+  const secondParentUids = Object.keys(second);
+  return (
+    firstParentUids.length === secondParentUids.length &&
+    firstParentUids.every((parentUid) =>
+      ordersMatch(first[parentUid] || [], second[parentUid] || []),
+    )
+  );
+};
+
 export const reconcilePinsForParent = ({
   settings,
   parentUid,
@@ -161,34 +209,52 @@ export const reconcilePinsForParent = ({
 }): {
   settings: PinnedBlocksByParent;
   changed: boolean;
-  movedParentUids: string[];
+  affectedParentUids: string[];
   removedUids: string[];
 } => {
-  const pinnedUids = settings[parentUid] || [];
-  if (!pinnedUids.length) {
+  const pinnedParentByUid = getPinnedParentByUid(settings);
+  if (!pinnedParentByUid.size) {
     return {
       settings,
       changed: false,
-      movedParentUids: [],
+      affectedParentUids: [],
       removedUids: [],
     };
   }
 
   const directChildSet = new Set(directChildUids);
-  const nextSettings: PinnedBlocksByParent = { ...settings };
-  const remainingUids: string[] = [];
-  const movedParentUids: string[] = [];
+  const directPinnedUids = directChildUids.filter((uid) =>
+    pinnedParentByUid.has(uid),
+  );
+  const nextSettings: PinnedBlocksByParent = Object.fromEntries(
+    Object.entries(settings).map(([storedParentUid, pinnedUids]) => [
+      storedParentUid,
+      [...pinnedUids],
+    ]),
+  );
+  const affectedParentUids: string[] = [];
+  const movedAwayUids: string[] = [];
   const removedUids: string[] = [];
 
-  pinnedUids.forEach((uid) => {
-    if (directChildSet.has(uid)) {
-      remainingUids.push(uid);
-      return;
+  directPinnedUids.forEach((uid) => {
+    const storedParentUid = pinnedParentByUid.get(uid);
+    if (storedParentUid && storedParentUid !== parentUid) {
+      removeUidFromParent({
+        settings: nextSettings,
+        parentUid: storedParentUid,
+        uid,
+      });
+      affectedParentUids.push(storedParentUid);
     }
+  });
+
+  const transientPinnedUids: string[] = [];
+  (settings[parentUid] || []).forEach((uid) => {
+    if (directChildSet.has(uid)) return;
 
     const liveParentUid = getParentUidByBlockUid(uid);
     if (liveParentUid === parentUid) {
-      remainingUids.push(uid);
+      transientPinnedUids.push(uid);
       return;
     }
 
@@ -198,35 +264,47 @@ export const reconcilePinsForParent = ({
     }
 
     const targetPinnedUids = nextSettings[liveParentUid] || [];
-    nextSettings[liveParentUid] = targetPinnedUids.includes(uid)
-      ? targetPinnedUids
-      : [...targetPinnedUids, uid];
+    nextSettings[liveParentUid] = addUnique(targetPinnedUids, uid);
+    removeUidFromParent({ settings: nextSettings, parentUid, uid });
 
-    if (!movedParentUids.includes(liveParentUid)) {
-      movedParentUids.push(liveParentUid);
-    }
+    movedAwayUids.push(uid);
+    affectedParentUids.push(liveParentUid);
   });
 
-  const changed = Boolean(movedParentUids.length || removedUids.length);
-  if (!changed) {
+  const migratedDirectPinnedUids = directPinnedUids.filter(
+    (uid) => pinnedParentByUid.get(uid) !== parentUid,
+  );
+  const nextParentPinnedUids = transientPinnedUids.length
+    ? [
+        ...(settings[parentUid] || []).filter(
+          (uid) => !removedUids.includes(uid) && !movedAwayUids.includes(uid),
+        ),
+        ...migratedDirectPinnedUids.filter(
+          (uid) => !(settings[parentUid] || []).includes(uid),
+        ),
+      ]
+    : directPinnedUids;
+  if (nextParentPinnedUids.length) {
+    nextSettings[parentUid] = nextParentPinnedUids;
+  } else {
+    delete nextSettings[parentUid];
+  }
+
+  if (settingsMatch(settings, nextSettings)) {
     return {
       settings,
       changed: false,
-      movedParentUids: [],
+      affectedParentUids: [],
       removedUids: [],
     };
-  }
-
-  if (remainingUids.length) {
-    nextSettings[parentUid] = remainingUids;
-  } else {
-    delete nextSettings[parentUid];
   }
 
   return {
     settings: nextSettings,
     changed: true,
-    movedParentUids,
+    affectedParentUids: Array.from(new Set(affectedParentUids)).filter(
+      (affectedParentUid) => affectedParentUid !== parentUid,
+    ),
     removedUids,
   };
 };

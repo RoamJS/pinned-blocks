@@ -11,6 +11,7 @@
 - Matched the default pin indicator color to Roam's native icon color.
 - Adjusted the default pin indicator size to better align with Roam's native icons.
 - Changed moved pinned blocks to stay pinned under their new parent.
+- Changed pinned block order to follow drag-and-drop order within each pinned group.
 - Fixed pinned indicators flickering when Roam refreshes block hover controls.
 - Fixed pins under daily note pages disappearing after reloading the extension.
 - Fixed pinned block settings so rapid pin and unpin actions save in order.

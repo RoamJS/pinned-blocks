@@ -6,6 +6,7 @@ import {
   normalizePinnedBlocksSettings,
   ordersMatch,
   prunePinsForParent,
+  reconcilePinsForParent,
   removePinnedUid,
   shouldRemovePinnedIndicator,
 } from "../src/utils/pins";
@@ -163,5 +164,112 @@ test("prunePinsForParent removes pins that are no longer direct children", () =>
     },
     changed: true,
     removedUids: ["block1234"],
+  });
+});
+
+test("reconcilePinsForParent keeps direct child pins unchanged", () => {
+  const settings = {
+    parent123: ["block1234", "block5678"],
+    parent456: ["block9999"],
+  };
+  const result = reconcilePinsForParent({
+    settings,
+    parentUid: "parent123",
+    directChildUids: ["block1234", "block5678", "regular01"],
+    getParentUidByBlockUid: () => {
+      throw new Error("Direct child pins should not need parent lookups");
+    },
+  });
+
+  expect(result).toEqual({
+    settings,
+    changed: false,
+    movedParentUids: [],
+    removedUids: [],
+  });
+});
+
+test("reconcilePinsForParent moves pins to their live parent", () => {
+  expect(
+    reconcilePinsForParent({
+      settings: {
+        parent123: ["block1234", "block5678"],
+        parent456: ["block9999"],
+      },
+      parentUid: "parent123",
+      directChildUids: ["block5678", "regular01"],
+      getParentUidByBlockUid: (uid) =>
+        uid === "block1234" ? "parent456" : "parent123",
+    }),
+  ).toEqual({
+    settings: {
+      parent123: ["block5678"],
+      parent456: ["block9999", "block1234"],
+    },
+    changed: true,
+    movedParentUids: ["parent456"],
+    removedUids: [],
+  });
+});
+
+test("reconcilePinsForParent appends moved pins once per target parent", () => {
+  expect(
+    reconcilePinsForParent({
+      settings: {
+        parent123: ["block1234", "block5678"],
+        parent456: ["block9999"],
+      },
+      parentUid: "parent123",
+      directChildUids: [],
+      getParentUidByBlockUid: () => "parent456",
+    }),
+  ).toEqual({
+    settings: {
+      parent456: ["block9999", "block1234", "block5678"],
+    },
+    changed: true,
+    movedParentUids: ["parent456"],
+    removedUids: [],
+  });
+});
+
+test("reconcilePinsForParent removes stale pins with no live parent", () => {
+  expect(
+    reconcilePinsForParent({
+      settings: {
+        parent123: ["block1234", "block5678"],
+        parent456: ["block9999"],
+      },
+      parentUid: "parent123",
+      directChildUids: ["block5678", "regular01"],
+      getParentUidByBlockUid: () => "",
+    }),
+  ).toEqual({
+    settings: {
+      parent123: ["block5678"],
+      parent456: ["block9999"],
+    },
+    changed: true,
+    movedParentUids: [],
+    removedUids: ["block1234"],
+  });
+});
+
+test("reconcilePinsForParent preserves pins still owned by the same parent", () => {
+  const settings = {
+    parent123: ["block1234", "block5678"],
+  };
+  expect(
+    reconcilePinsForParent({
+      settings,
+      parentUid: "parent123",
+      directChildUids: ["block5678"],
+      getParentUidByBlockUid: () => "parent123",
+    }),
+  ).toEqual({
+    settings,
+    changed: false,
+    movedParentUids: [],
+    removedUids: [],
   });
 });

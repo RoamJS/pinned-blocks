@@ -24,10 +24,9 @@ Pinned Blocks adds these classes to the rendered outline:
 
 - `.roamjs-pinned-blocks-block`
 - `.roamjs-pinned-blocks-block-pinned`
-- `.roamjs-pinned-blocks-indicator`
-- `.roamjs-pinned-blocks-indicator-icon`
 
-The default indicator can be adjusted with CSS variables:
+The default indicator is rendered on `.roamjs-pinned-blocks-block-pinned::before`
+and can be adjusted with CSS variables:
 
 - `--roamjs-pinned-blocks-indicator-color`
 - `--roamjs-pinned-blocks-indicator-size`

@@ -11,7 +11,7 @@ import {
   getPinnedParentUid,
   normalizePinnedBlocksSettings,
   ordersMatch,
-  prunePinsForParent,
+  reconcilePinsForParent,
   removePinnedUid,
   shouldRemovePinnedIndicator,
   type PinnedBlocksByParent,
@@ -23,18 +23,16 @@ type PullWatchCallback = Parameters<
 >[2];
 
 const TOGGLE_PIN_COMMAND = "Pinned Blocks: Toggle Pin Focused Block";
+const PIN_FOCUSED_COMMAND = "Pinned Blocks: Pin Focused Block";
 const UNPIN_FOCUSED_COMMAND = "Pinned Blocks: Unpin Focused Block";
 const PIN_CONTEXT_COMMAND = "Pinned Blocks: Pin block";
 const UNPIN_CONTEXT_COMMAND = "Pinned Blocks: Unpin block";
 const PULL_PATTERN = "[{:block/children [:block/uid :block/order]}]";
 const WATCH_DEBOUNCE_MS = 120;
-const INDICATOR_DEBOUNCE_MS = 80;
 const STYLE_ID = "roamjs-pinned-blocks-style";
 const PINNED_BLOCK_CLASS = "roamjs-pinned-blocks-block";
 const PINNED_BLOCK_ACTIVE_CLASS = "roamjs-pinned-blocks-block-pinned";
 const INDICATOR_CLASS = "roamjs-pinned-blocks-indicator";
-const INDICATOR_ICON_CLASS = "roamjs-pinned-blocks-indicator-icon";
-const BLUEPRINT_PIN_ICON_CLASS = "bp3-icon-pin";
 const UID_SUFFIX_REGEX = /[A-Za-z0-9_-]{9}$/;
 
 const getLocalStorageKey = (): string =>
@@ -150,21 +148,9 @@ const ensurePinnedIndicator = ({
 }): void => {
   container.classList.add(PINNED_BLOCK_CLASS, PINNED_BLOCK_ACTIVE_CLASS);
   container.dataset.roamjsPinnedBlocksUid = uid;
-
-  if (container.querySelector(`:scope > .${INDICATOR_CLASS}`)) return;
-
-  const indicator = document.createElement("span");
-  indicator.className = INDICATOR_CLASS;
-  indicator.dataset.roamjsPinnedBlocksIndicator = "true";
-  indicator.title = "Pinned block";
-  indicator.setAttribute("aria-label", "Pinned block");
-
-  const icon = document.createElement("span");
-  icon.className = `${INDICATOR_ICON_CLASS} bp3-icon ${BLUEPRINT_PIN_ICON_CLASS}`;
-  icon.setAttribute("aria-hidden", "true");
-  indicator.append(icon);
-
-  container.insertBefore(indicator, container.firstChild);
+  container
+    .querySelector<HTMLElement>(`:scope > .${INDICATOR_CLASS}`)
+    ?.remove();
 };
 
 export default runExtension(async ({ extensionAPI }) => {
@@ -172,8 +158,8 @@ export default runExtension(async ({ extensionAPI }) => {
   const watcherCleanups = new Map<string, () => void>();
   const enforceTimeouts = new Map<string, number>();
   let settingsWriteQueue: Promise<void> = Promise.resolve();
-  let indicatorTimeout: number | null = null;
-  let suppressPrunedToastUntil = 0;
+  let indicatorFrame: number | null = null;
+  let suppressRemovedToastUntil = 0;
 
   if (!isEmptySettings(currentSettings)) {
     const settingsJson = JSON.stringify(currentSettings);
@@ -191,31 +177,27 @@ export default runExtension(async ({ extensionAPI }) => {
         position: relative;
       }
 
-      .${INDICATOR_CLASS} {
+      .${PINNED_BLOCK_ACTIVE_CLASS}::before {
         align-items: center;
         color: var(--roamjs-pinned-blocks-indicator-color, #5c7080);
+        content: "\\e646";
         display: inline-flex;
+        font-family: "Icons16", sans-serif;
+        font-size: var(--roamjs-pinned-blocks-indicator-size, 13px);
+        font-style: normal;
+        font-weight: 400;
         height: var(--roamjs-pinned-blocks-indicator-size, 13px);
         justify-content: center;
         left: var(--roamjs-pinned-blocks-indicator-left, -18px);
+        line-height: var(--roamjs-pinned-blocks-indicator-size, 13px);
+        -moz-osx-font-smoothing: grayscale;
         opacity: var(--roamjs-pinned-blocks-indicator-opacity, 0.9);
         pointer-events: none;
         position: absolute;
         top: var(--roamjs-pinned-blocks-indicator-top, 5px);
+        -webkit-font-smoothing: antialiased;
         width: var(--roamjs-pinned-blocks-indicator-size, 13px);
         z-index: var(--roamjs-pinned-blocks-indicator-z-index, 1);
-      }
-
-      .${INDICATOR_CLASS}:hover {
-        opacity: 1;
-      }
-
-      .${INDICATOR_ICON_CLASS} {
-        color: currentColor;
-        font-size: var(--roamjs-pinned-blocks-indicator-size, 13px);
-        height: 100%;
-        line-height: var(--roamjs-pinned-blocks-indicator-size, 13px);
-        width: 100%;
       }
     `,
     STYLE_ID,
@@ -241,7 +223,7 @@ export default runExtension(async ({ extensionAPI }) => {
   };
 
   const syncPinnedIndicators = (): void => {
-    indicatorTimeout = null;
+    indicatorFrame = null;
     const pinnedUids = getPinnedUids(currentSettings);
 
     document
@@ -267,11 +249,8 @@ export default runExtension(async ({ extensionAPI }) => {
   };
 
   function scheduleIndicatorSync(): void {
-    if (indicatorTimeout !== null) window.clearTimeout(indicatorTimeout);
-    indicatorTimeout = window.setTimeout(
-      syncPinnedIndicators,
-      INDICATOR_DEBOUNCE_MS,
-    );
+    if (indicatorFrame !== null) window.cancelAnimationFrame(indicatorFrame);
+    indicatorFrame = window.requestAnimationFrame(syncPinnedIndicators);
   }
 
   const scheduleEnforceParent = (parentUid: string): void => {
@@ -316,14 +295,14 @@ export default runExtension(async ({ extensionAPI }) => {
     });
   };
 
-  const maybeToastPrunedPin = (removedCount: number): void => {
-    if (!removedCount || Date.now() <= suppressPrunedToastUntil) return;
+  const maybeToastRemovedPin = (removedCount: number): void => {
+    if (!removedCount || Date.now() <= suppressRemovedToastUntil) return;
 
-    suppressPrunedToastUntil = Date.now() + 5000;
+    suppressRemovedToastUntil = Date.now() + 5000;
     toast({
-      id: "pinned-blocks-pin-removed",
+      id: "pinned-blocks-stale-pin-removed",
       content:
-        "Pinned Blocks unpinned a block because it is no longer a direct child of its pinned parent.",
+        "Pinned Blocks removed a stale pin because the block was not found.",
       intent: "warning",
     });
   };
@@ -335,24 +314,21 @@ export default runExtension(async ({ extensionAPI }) => {
     if (!pinnedUids.length) return;
 
     const currentChildUids = getDirectChildUids(parentUid);
-    if (!currentChildUids.length) {
-      const pinnedParentUids = pinnedUids.map(getParentUidByBlockUid);
-      if (pinnedParentUids.some((uid) => !uid || uid === parentUid)) return;
-    }
-
-    const pruned = prunePinsForParent({
+    const reconciled = reconcilePinsForParent({
       settings: currentSettings,
       parentUid,
       directChildUids: currentChildUids,
+      getParentUidByBlockUid,
     });
 
-    if (pruned.changed) {
-      persistSettings(pruned.settings);
+    if (reconciled.changed) {
+      persistSettings(reconciled.settings);
       syncWatchers();
-      maybeToastPrunedPin(pruned.removedUids.length);
+      reconciled.movedParentUids.forEach(scheduleEnforceParent);
+      maybeToastRemovedPin(reconciled.removedUids.length);
     }
 
-    const activePinnedUids = pruned.settings[parentUid] || [];
+    const activePinnedUids = reconciled.settings[parentUid] || [];
     if (!activePinnedUids.length) return;
 
     const desiredChildOrder = getDesiredChildOrder({
@@ -459,6 +435,10 @@ export default runExtension(async ({ extensionAPI }) => {
     },
   });
   void extensionAPI.ui.commandPalette.addCommand({
+    label: PIN_FOCUSED_COMMAND,
+    callback: () => pinBlock(getFocusedUid() || undefined),
+  });
+  void extensionAPI.ui.commandPalette.addCommand({
     label: UNPIN_FOCUSED_COMMAND,
     callback: () => unpinBlock(getFocusedUid() || undefined),
   });
@@ -478,9 +458,9 @@ export default runExtension(async ({ extensionAPI }) => {
 
   return {
     elements: [style],
-    commands: [TOGGLE_PIN_COMMAND, UNPIN_FOCUSED_COMMAND],
+    commands: [TOGGLE_PIN_COMMAND, PIN_FOCUSED_COMMAND, UNPIN_FOCUSED_COMMAND],
     unload: () => {
-      if (indicatorTimeout !== null) window.clearTimeout(indicatorTimeout);
+      if (indicatorFrame !== null) window.cancelAnimationFrame(indicatorFrame);
       mutationObserver.disconnect();
       enforceTimeouts.forEach((timeout) => window.clearTimeout(timeout));
       enforceTimeouts.clear();

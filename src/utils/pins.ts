@@ -147,3 +147,86 @@ export const prunePinsForParent = ({
 
   return { settings: nextSettings, changed: true, removedUids };
 };
+
+export const reconcilePinsForParent = ({
+  settings,
+  parentUid,
+  directChildUids,
+  getParentUidByBlockUid,
+}: {
+  settings: PinnedBlocksByParent;
+  parentUid: string;
+  directChildUids: string[];
+  getParentUidByBlockUid: (uid: string) => string;
+}): {
+  settings: PinnedBlocksByParent;
+  changed: boolean;
+  movedParentUids: string[];
+  removedUids: string[];
+} => {
+  const pinnedUids = settings[parentUid] || [];
+  if (!pinnedUids.length) {
+    return {
+      settings,
+      changed: false,
+      movedParentUids: [],
+      removedUids: [],
+    };
+  }
+
+  const directChildSet = new Set(directChildUids);
+  const nextSettings: PinnedBlocksByParent = { ...settings };
+  const remainingUids: string[] = [];
+  const movedParentUids: string[] = [];
+  const removedUids: string[] = [];
+
+  pinnedUids.forEach((uid) => {
+    if (directChildSet.has(uid)) {
+      remainingUids.push(uid);
+      return;
+    }
+
+    const liveParentUid = getParentUidByBlockUid(uid);
+    if (liveParentUid === parentUid) {
+      remainingUids.push(uid);
+      return;
+    }
+
+    if (!liveParentUid) {
+      removedUids.push(uid);
+      return;
+    }
+
+    const targetPinnedUids = nextSettings[liveParentUid] || [];
+    nextSettings[liveParentUid] = targetPinnedUids.includes(uid)
+      ? targetPinnedUids
+      : [...targetPinnedUids, uid];
+
+    if (!movedParentUids.includes(liveParentUid)) {
+      movedParentUids.push(liveParentUid);
+    }
+  });
+
+  const changed = Boolean(movedParentUids.length || removedUids.length);
+  if (!changed) {
+    return {
+      settings,
+      changed: false,
+      movedParentUids: [],
+      removedUids: [],
+    };
+  }
+
+  if (remainingUids.length) {
+    nextSettings[parentUid] = remainingUids;
+  } else {
+    delete nextSettings[parentUid];
+  }
+
+  return {
+    settings: nextSettings,
+    changed: true,
+    movedParentUids,
+    removedUids,
+  };
+};

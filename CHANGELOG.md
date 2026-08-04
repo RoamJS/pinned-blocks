@@ -12,8 +12,14 @@
 - Adjusted the default pin indicator size to better align with Roam's native icons.
 - Changed moved pinned blocks to stay pinned under their new parent.
 - Changed pinned block order to follow drag-and-drop order within each pinned group.
+- Changed pin storage to shared graph records under `roam/js/pinned-blocks` so extension users in multiplayer graphs use the same pins.
+- Added an extension-managed notice and one namespaced child record per pinned block.
+- Added automatic migration from the legacy `pinned-blocks-by-parent` extension setting.
+- Removed browser local-storage persistence and fallback behavior.
 - Fixed pinned indicators flickering when Roam refreshes block hover controls.
 - Fixed pins under daily note pages disappearing after reloading the extension.
-- Fixed pinned block settings so rapid pin and unpin actions save in order.
+- Fixed rapid pin and unpin actions so shared graph mutations run in order.
 - Fixed stale pin indicators that could remain when Roam reuses rendered block containers.
 - Fixed pin indicators being clipped when pinned pages are viewed in the right sidebar.
+- Fixed graph record props to use Roam's normalized key format and repair records written with duplicate namespace prefixes.
+- Documented that collaborators without the extension can see reorders without seeing pin indicators.

@@ -19,6 +19,29 @@
 - Reorder the real Roam outline with Roam's native block reorder API; no duplicate shelf or hidden source blocks.
 - Watch pinned parents so regular blocks inserted above or between pinned blocks are moved below the pinned group.
 - Mark pinned blocks with a small pin indicator and stable CSS hooks for custom styling.
+- Share pin state between collaborators through graph-backed records on `roam/js/pinned-blocks`.
+
+## Multiplayer graphs
+
+Collaborators running Pinned Blocks in the same graph share the same pin records
+and pinned order. Pin membership is stored under `roam/js/pinned-blocks`, while
+order follows the real Roam outline.
+
+Pinned Blocks changes real sibling order with Roam's native reorder API, so its
+changes are also visible to collaborators who do not run the extension. Those
+collaborators will not see pin indicators and may not understand why a block
+moves back into the pinned group.
+
+## Storage
+
+Pinned Blocks creates `roam/js/pinned-blocks` with a notice explaining that the
+page is extension-managed. Each pin is stored as a separate child record using
+the `roamjs-pinned-blocks` block-props namespace. The page and notice remain
+when there are no pins; pin-data children are removed.
+
+Existing pins stored in the legacy `pinned-blocks-by-parent` extension setting
+are migrated automatically. The legacy setting is cleared only after migration
+succeeds. Pinned Blocks does not use browser local storage.
 
 ## Commands
 

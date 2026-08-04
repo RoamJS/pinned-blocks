@@ -1,19 +1,16 @@
 import { expect, test } from "@playwright/test";
 import {
-  addPinnedUid,
   getDesiredChildOrder,
   getPinnedParentUid,
-  normalizePinnedBlocksSettings,
+  normalizeLegacyPinnedBlocksSettings,
   ordersMatch,
-  prunePinsForParent,
   reconcilePinsForParent,
-  removePinnedUid,
   shouldRemovePinnedIndicator,
 } from "../src/utils/pins";
 
-test("normalizePinnedBlocksSettings parses, dedupes, and removes invalid entries", () => {
+test("normalizeLegacyPinnedBlocksSettings parses, dedupes, and removes invalid entries", () => {
   expect(
-    normalizePinnedBlocksSettings(
+    normalizeLegacyPinnedBlocksSettings(
       JSON.stringify({
         parent123: ["block1234", "block1234", "bad", 42],
         "bad parent": ["block5678"],
@@ -25,9 +22,9 @@ test("normalizePinnedBlocksSettings parses, dedupes, and removes invalid entries
   });
 });
 
-test("normalizePinnedBlocksSettings accepts already parsed settings", () => {
+test("normalizeLegacyPinnedBlocksSettings accepts already parsed settings", () => {
   expect(
-    normalizePinnedBlocksSettings({
+    normalizeLegacyPinnedBlocksSettings({
       parent123: ["block1234"],
       parent456: [],
     }),
@@ -36,56 +33,13 @@ test("normalizePinnedBlocksSettings accepts already parsed settings", () => {
   });
 });
 
-test("normalizePinnedBlocksSettings keeps daily note parent uids", () => {
+test("normalizeLegacyPinnedBlocksSettings keeps daily note parent uids", () => {
   expect(
-    normalizePinnedBlocksSettings({
+    normalizeLegacyPinnedBlocksSettings({
       "07-03-2026": ["block1234"],
     }),
   ).toEqual({
     "07-03-2026": ["block1234"],
-  });
-});
-
-test("addPinnedUid appends a pin without mutating previous settings", () => {
-  const settings = { parent123: ["block1234"] };
-  const nextSettings = addPinnedUid({
-    settings,
-    parentUid: "parent123",
-    uid: "block5678",
-  });
-
-  expect(nextSettings).toEqual({
-    parent123: ["block1234", "block5678"],
-  });
-  expect(settings).toEqual({ parent123: ["block1234"] });
-});
-
-test("addPinnedUid moves a pin from an old parent to the new parent", () => {
-  expect(
-    addPinnedUid({
-      settings: {
-        parent123: ["block1234"],
-        parent456: ["block5678"],
-      },
-      parentUid: "parent456",
-      uid: "block1234",
-    }),
-  ).toEqual({
-    parent456: ["block5678", "block1234"],
-  });
-});
-
-test("removePinnedUid removes matching uids and prunes empty parents", () => {
-  expect(
-    removePinnedUid({
-      settings: {
-        parent123: ["block1234"],
-        parent456: ["block5678", "block9999"],
-      },
-      uid: "block1234",
-    }),
-  ).toEqual({
-    parent456: ["block5678", "block9999"],
   });
 });
 
@@ -145,26 +99,6 @@ test("shouldRemovePinnedIndicator removes stale or unpinned markers", () => {
       storedUid: "pinned123",
     }),
   ).toBe(true);
-});
-
-test("prunePinsForParent removes pins that are no longer direct children", () => {
-  expect(
-    prunePinsForParent({
-      settings: {
-        parent123: ["block1234", "block5678"],
-        parent456: ["block9999"],
-      },
-      parentUid: "parent123",
-      directChildUids: ["block5678", "regular01"],
-    }),
-  ).toEqual({
-    settings: {
-      parent123: ["block5678"],
-      parent456: ["block9999"],
-    },
-    changed: true,
-    removedUids: ["block1234"],
-  });
 });
 
 test("reconcilePinsForParent keeps direct child pins unchanged", () => {

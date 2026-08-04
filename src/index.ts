@@ -1,18 +1,31 @@
+import { render as renderToast } from "roamjs-components/components/Toast";
 import addStyle from "roamjs-components/dom/addStyle";
+import getPageUidByPageTitle from "roamjs-components/queries/getPageUidByPageTitle";
 import getParentUidByBlockUid from "roamjs-components/queries/getParentUidByBlockUid";
 import getShallowTreeByParentUid from "roamjs-components/queries/getShallowTreeByParentUid";
-import { render as renderToast } from "roamjs-components/components/Toast";
-import type { OnloadArgs } from "roamjs-components/types";
-import runExtension from "roamjs-components/util/runExtension";
+import type { OnloadArgs, PullBlock } from "roamjs-components/types";
 import {
-  STORAGE_KEY,
-  addPinnedUid,
+  CONFIG_PAGE_TITLE,
+  LEGACY_STORAGE_KEY,
+  NOTICE_TEXT,
+  buildPinnedBlocksByParent,
+  blockPropsRequireRewrite,
+  createNoticeRecordProps,
+  createPinRecordProps,
+  getPinnedBlocksRecordProps,
+  mergePinnedBlocksRecordProps,
+  normalizeBlockProps,
+  summarizeConfigRecords,
+  type BlockProps,
+  type ConfigChild,
+  type ConfigRecordSummary,
+} from "~/utils/pinRecords";
+import {
   getDesiredChildOrder,
   getPinnedParentUid,
-  normalizePinnedBlocksSettings,
+  normalizeLegacyPinnedBlocksSettings,
   ordersMatch,
   reconcilePinsForParent,
-  removePinnedUid,
   shouldRemovePinnedIndicator,
   type PinnedBlocksByParent,
 } from "~/utils/pins";
@@ -21,13 +34,21 @@ type ExtensionAPI = OnloadArgs["extensionAPI"];
 type PullWatchCallback = Parameters<
   typeof window.roamAlphaAPI.data.addPullWatch
 >[2];
+type ConfigPullChild = {
+  ":block/order"?: number;
+  ":block/props"?: BlockProps;
+  ":block/string"?: string;
+  ":block/uid"?: string;
+};
 
 const TOGGLE_PIN_COMMAND = "Pinned Blocks: Toggle Pin Focused Block";
 const PIN_FOCUSED_COMMAND = "Pinned Blocks: Pin Focused Block";
 const UNPIN_FOCUSED_COMMAND = "Pinned Blocks: Unpin Focused Block";
 const PIN_CONTEXT_COMMAND = "Pinned Blocks: Pin block";
 const UNPIN_CONTEXT_COMMAND = "Pinned Blocks: Unpin block";
-const PULL_PATTERN = "[{:block/children [:block/uid :block/order]}]";
+const PARENT_PULL_PATTERN = "[{:block/children [:block/uid :block/order]}]";
+const CONFIG_PULL_PATTERN =
+  "[{:block/children [:block/uid :block/string :block/order :block/props]}]";
 const WATCH_DEBOUNCE_MS = 120;
 const STYLE_ID = "roamjs-pinned-blocks-style";
 const PINNED_BLOCK_CLASS = "roamjs-pinned-blocks-block";
@@ -35,54 +56,50 @@ const PINNED_BLOCK_ACTIVE_CLASS = "roamjs-pinned-blocks-block-pinned";
 const INDICATOR_CLASS = "roamjs-pinned-blocks-indicator";
 const UID_SUFFIX_REGEX = /[A-Za-z0-9_-]{9}$/;
 
-const getLocalStorageKey = (): string =>
-  `${STORAGE_KEY}:${window.roamAlphaAPI.graph.name}`;
-
-const isEmptySettings = (settings: PinnedBlocksByParent): boolean =>
-  !Object.keys(settings).length;
-
-const readLocalSettings = (): PinnedBlocksByParent => {
-  try {
-    return normalizePinnedBlocksSettings(
-      window.localStorage.getItem(getLocalStorageKey()),
-    );
-  } catch {
-    return {};
-  }
+const createRoamPage = async (title: string): Promise<string> => {
+  const uid = window.roamAlphaAPI.util.generateUID();
+  await window.roamAlphaAPI.data.page.create({ page: { title, uid } });
+  return uid;
 };
 
-const writeLocalSettings = (settingsJson: string): void => {
-  try {
-    window.localStorage.setItem(getLocalStorageKey(), settingsJson);
-  } catch {
-    // Roam settings remain the source of truth when browser storage is unavailable.
-  }
-};
-
-const readSettings = ({
-  extensionAPI,
+const createRoamBlock = async ({
+  parentUid,
+  order,
+  text,
+  props,
 }: {
-  extensionAPI: ExtensionAPI;
-}): PinnedBlocksByParent => {
-  try {
-    const extensionSettings = normalizePinnedBlocksSettings(
-      extensionAPI.settings.get(STORAGE_KEY),
-    );
-    if (!isEmptySettings(extensionSettings)) return extensionSettings;
-
-    return readLocalSettings();
-  } catch {
-    return readLocalSettings();
-  }
+  parentUid: string;
+  order: number | "last";
+  text: string;
+  props: BlockProps;
+}): Promise<string> => {
+  const uid = window.roamAlphaAPI.util.generateUID();
+  await window.roamAlphaAPI.data.block.create({
+    location: { "parent-uid": parentUid, order },
+    block: { uid, string: text, props },
+  });
+  return uid;
 };
 
-const writeSettings = ({
-  extensionAPI,
-  settingsJson,
+const deleteRoamBlock = (uid: string): Promise<void> =>
+  window.roamAlphaAPI.data.block.delete({ block: { uid } });
+
+const updateRoamBlock = ({
+  uid,
+  text,
+  props,
 }: {
-  extensionAPI: ExtensionAPI;
-  settingsJson: string;
-}): Promise<void> => extensionAPI.settings.set(STORAGE_KEY, settingsJson);
+  uid: string;
+  text?: string;
+  props?: BlockProps;
+}): Promise<void> =>
+  window.roamAlphaAPI.data.block.update({
+    block: {
+      uid,
+      ...(text === undefined ? {} : { string: text }),
+      ...(props === undefined ? {} : { props }),
+    },
+  });
 
 const toast = ({
   id,
@@ -93,12 +110,7 @@ const toast = ({
   content: string;
   intent?: "primary" | "success" | "warning" | "danger";
 }): void => {
-  renderToast({
-    id,
-    content,
-    intent,
-    timeout: 3000,
-  });
+  renderToast({ id, content, intent, timeout: 3000 });
 };
 
 const getDirectChildUids = (parentUid: string): string[] =>
@@ -153,23 +165,53 @@ const ensurePinnedIndicator = ({
     ?.remove();
 };
 
-export default runExtension(async ({ extensionAPI }) => {
-  let currentSettings = readSettings({ extensionAPI });
-  const watcherCleanups = new Map<string, () => void>();
+const readConfigChildren = (pageUid: string): ConfigChild[] =>
+  (
+    window.roamAlphaAPI.data.fast.q(
+      `[:find (pull ?c [:block/uid :block/string :block/order :block/props]) :where [?p :block/uid "${pageUid}"] [?p :block/children ?c]]`,
+    ) as Array<[ConfigPullChild]>
+  )
+    .map(([child]) => {
+      const rawProps = child[":block/props"];
+      return {
+        order: child[":block/order"] || 0,
+        props: normalizeBlockProps(rawProps),
+        propsRequireRewrite: blockPropsRequireRewrite(rawProps),
+        text: child[":block/string"] || "",
+        uid: child[":block/uid"] || "",
+      };
+    })
+    .filter((child) => child.uid)
+    .sort((a, b) => a.order - b.order);
+
+const readLatestBlockProps = (uid: string): BlockProps => {
+  const block = window.roamAlphaAPI.data.pull("[:block/props]", [
+    ":block/uid",
+    uid,
+  ]) as PullBlock | null;
+  return normalizeBlockProps(block?.[":block/props"]);
+};
+
+const getPinRecordText = (uid: string): string => `Pinned block data: ${uid}`;
+
+const initializeExtension = async ({
+  extensionAPI,
+}: OnloadArgs): Promise<() => void> => {
+  let currentSettings: PinnedBlocksByParent = {};
+  let configWatcherCleanup: (() => void) | null = null;
+  let configWatcherPageUid = "";
+  const parentWatcherCleanups = new Map<string, () => void>();
   const enforceTimeouts = new Map<string, number>();
-  let settingsWriteQueue: Promise<void> = Promise.resolve();
+  let mutationQueue: Promise<void> = Promise.resolve();
+  let configSyncTimeout: number | null = null;
   let indicatorFrame: number | null = null;
   let suppressRemovedToastUntil = 0;
-
-  if (!isEmptySettings(currentSettings)) {
-    const settingsJson = JSON.stringify(currentSettings);
-    writeLocalSettings(settingsJson);
-    settingsWriteQueue = writeSettings({ extensionAPI, settingsJson }).catch(
-      (error) => {
-        console.error("Pinned Blocks failed to restore saved settings", error);
-      },
-    );
-  }
+  let isUnloading = false;
+  let hasCleanedUp = false;
+  let mutationObserver: MutationObserver | null = null;
+  let pinContextCommandRegistered = false;
+  let unpinContextCommandRegistered = false;
+  const paletteCommandsRegistered = new Set<string>();
 
   const style = addStyle(
     `
@@ -208,23 +250,141 @@ export default runExtension(async ({ extensionAPI }) => {
     STYLE_ID,
   );
 
-  const persistSettings = (settings: PinnedBlocksByParent): void => {
-    currentSettings = settings;
-    scheduleIndicatorSync();
+  const enqueueMutation = <T>(mutation: () => Promise<T>): Promise<T> => {
+    const result = mutationQueue.catch(() => undefined).then(mutation);
+    mutationQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  };
 
-    const settingsJson = JSON.stringify(settings);
-    writeLocalSettings(settingsJson);
-    settingsWriteQueue = settingsWriteQueue
-      .catch(() => undefined)
-      .then(() => writeSettings({ extensionAPI, settingsJson }))
-      .catch((error) => {
-        console.error("Pinned Blocks failed to save settings", error);
-        toast({
-          id: "pinned-blocks-save-failed",
-          content: "Pinned Blocks could not save its settings.",
-          intent: "danger",
+  const ensureConfigPage = async (): Promise<string> => {
+    const existingUid = getPageUidByPageTitle(CONFIG_PAGE_TITLE);
+    if (existingUid) return existingUid;
+
+    try {
+      return await createRoamPage(CONFIG_PAGE_TITLE);
+    } catch (error) {
+      const concurrentlyCreatedUid = getPageUidByPageTitle(CONFIG_PAGE_TITLE);
+      if (concurrentlyCreatedUid) return concurrentlyCreatedUid;
+      throw error;
+    }
+  };
+
+  const deleteBlockIfPresent = async (uid: string): Promise<void> => {
+    try {
+      await deleteRoamBlock(uid);
+    } catch (error) {
+      if (getParentUidByBlockUid(uid)) throw error;
+    }
+  };
+
+  const ensureNotice = async (pageUid: string): Promise<void> => {
+    let children = readConfigChildren(pageUid);
+    let summary = summarizeConfigRecords(children);
+
+    if (!summary.canonicalNoticeUid) {
+      const existingTextBlock = children.find(
+        (child) => child.text === NOTICE_TEXT,
+      );
+      if (existingTextBlock) {
+        await updateRoamBlock({
+          uid: existingTextBlock.uid,
+          props: mergePinnedBlocksRecordProps({
+            props: readLatestBlockProps(existingTextBlock.uid),
+            record: { type: "notice", version: 1 },
+          }),
         });
-      });
+      } else {
+        await createRoamBlock({
+          parentUid: pageUid,
+          order: 0,
+          text: NOTICE_TEXT,
+          props: createNoticeRecordProps(),
+        });
+      }
+
+      children = readConfigChildren(pageUid);
+      summary = summarizeConfigRecords(children);
+    }
+
+    if (summary.canonicalNoticeUid) {
+      const notice = children.find(
+        (child) => child.uid === summary.canonicalNoticeUid,
+      );
+      if (
+        notice &&
+        (notice.text !== NOTICE_TEXT || notice.propsRequireRewrite)
+      ) {
+        await updateRoamBlock({
+          uid: notice.uid,
+          ...(notice.text === NOTICE_TEXT ? {} : { text: NOTICE_TEXT }),
+          ...(notice.propsRequireRewrite
+            ? {
+                props: mergePinnedBlocksRecordProps({
+                  props: notice.props,
+                  record: { type: "notice", version: 1 },
+                }),
+              }
+            : {}),
+        });
+      }
+    }
+
+    await Promise.all(
+      summary.duplicateRecordUids
+        .filter((uid) =>
+          children.some(
+            (child) =>
+              child.uid === uid &&
+              getPinnedBlocksRecordProps(child.props)?.type === "notice",
+          ),
+        )
+        .map(deleteBlockIfPresent),
+    );
+  };
+
+  const reconcileConfigRecords = async (): Promise<{
+    pageUid: string;
+    summary: ConfigRecordSummary;
+  }> => {
+    const pageUid = await ensureConfigPage();
+    await ensureNotice(pageUid);
+
+    let children = readConfigChildren(pageUid);
+    let summary = summarizeConfigRecords(children);
+    if (summary.duplicateRecordUids.length) {
+      await Promise.all(summary.duplicateRecordUids.map(deleteBlockIfPresent));
+      children = readConfigChildren(pageUid);
+      summary = summarizeConfigRecords(children);
+    }
+
+    const recordsToRepair = children.filter(
+      (child) =>
+        child.propsRequireRewrite &&
+        getPinnedBlocksRecordProps(child.props)?.type === "pin",
+    );
+    if (recordsToRepair.length) {
+      await Promise.all(
+        recordsToRepair.map((child) =>
+          updateRoamBlock({ uid: child.uid, props: child.props }),
+        ),
+      );
+      children = readConfigChildren(pageUid);
+      summary = summarizeConfigRecords(children);
+    }
+
+    return { pageUid, summary };
+  };
+
+  const removePinRecords = async (pinnedUids: string[]): Promise<number> => {
+    const { summary } = await reconcileConfigRecords();
+    const recordUids = pinnedUids.flatMap(
+      (uid) => summary.pinRecordUidsByPinnedUid.get(uid) || [],
+    );
+    await Promise.all(recordUids.map(deleteBlockIfPresent));
+    return recordUids.length;
   };
 
   const syncPinnedIndicators = (): void => {
@@ -258,6 +418,13 @@ export default runExtension(async ({ extensionAPI }) => {
     indicatorFrame = window.requestAnimationFrame(syncPinnedIndicators);
   }
 
+  const cleanupParentWatcher = (parentUid: string): void => {
+    const cleanup = parentWatcherCleanups.get(parentUid);
+    if (!cleanup) return;
+    cleanup();
+    parentWatcherCleanups.delete(parentUid);
+  };
+
   const scheduleEnforceParent = (parentUid: string): void => {
     const existingTimeout = enforceTimeouts.get(parentUid);
     if (existingTimeout) window.clearTimeout(existingTimeout);
@@ -270,39 +437,41 @@ export default runExtension(async ({ extensionAPI }) => {
     );
   };
 
-  const cleanupParentWatcher = (parentUid: string): void => {
-    const cleanup = watcherCleanups.get(parentUid);
-    if (!cleanup) return;
-    cleanup();
-    watcherCleanups.delete(parentUid);
-  };
-
   const ensureParentWatcher = (parentUid: string): void => {
-    if (watcherCleanups.has(parentUid)) return;
+    if (parentWatcherCleanups.has(parentUid)) return;
 
     const entityId = `[:block/uid "${parentUid}"]`;
-    const watcher: PullWatchCallback = () => {
-      scheduleEnforceParent(parentUid);
-    };
-
-    window.roamAlphaAPI.data.addPullWatch(PULL_PATTERN, entityId, watcher);
-    watcherCleanups.set(parentUid, () => {
-      window.roamAlphaAPI.data.removePullWatch(PULL_PATTERN, entityId, watcher);
+    const watcher: PullWatchCallback = () => scheduleEnforceParent(parentUid);
+    window.roamAlphaAPI.data.addPullWatch(
+      PARENT_PULL_PATTERN,
+      entityId,
+      watcher,
+    );
+    parentWatcherCleanups.set(parentUid, () => {
+      window.roamAlphaAPI.data.removePullWatch(
+        PARENT_PULL_PATTERN,
+        entityId,
+        watcher,
+      );
     });
   };
 
-  const syncWatchers = (): void => {
+  const syncParentWatchers = (): void => {
     const activeParentUids = new Set(Object.keys(currentSettings));
     activeParentUids.forEach(ensureParentWatcher);
-
-    watcherCleanups.forEach((_, parentUid) => {
+    parentWatcherCleanups.forEach((_, parentUid) => {
       if (!activeParentUids.has(parentUid)) cleanupParentWatcher(parentUid);
     });
   };
 
+  const applyCurrentSettings = (settings: PinnedBlocksByParent): void => {
+    currentSettings = settings;
+    syncParentWatchers();
+    scheduleIndicatorSync();
+  };
+
   const maybeToastRemovedPin = (removedCount: number): void => {
     if (!removedCount || Date.now() <= suppressRemovedToastUntil) return;
-
     suppressRemovedToastUntil = Date.now() + 5000;
     toast({
       id: "pinned-blocks-stale-pin-removed",
@@ -314,6 +483,7 @@ export default runExtension(async ({ extensionAPI }) => {
 
   async function enforceParentOrder(parentUid: string): Promise<void> {
     enforceTimeouts.delete(parentUid);
+    if (isUnloading) return;
 
     const currentChildUids = getDirectChildUids(parentUid);
     const reconciled = reconcilePinsForParent({
@@ -324,13 +494,25 @@ export default runExtension(async ({ extensionAPI }) => {
     });
 
     if (reconciled.changed) {
-      persistSettings(reconciled.settings);
-      syncWatchers();
+      applyCurrentSettings(reconciled.settings);
       reconciled.affectedParentUids.forEach(scheduleEnforceParent);
-      maybeToastRemovedPin(reconciled.removedUids.length);
+
+      if (reconciled.removedUids.length) {
+        try {
+          const removedCount = await enqueueMutation(() =>
+            removePinRecords(reconciled.removedUids),
+          );
+          maybeToastRemovedPin(removedCount);
+        } catch (error) {
+          console.error(
+            "Pinned Blocks failed to remove stale pin records",
+            error,
+          );
+        }
+      }
     }
 
-    const activePinnedUids = reconciled.settings[parentUid] || [];
+    const activePinnedUids = currentSettings[parentUid] || [];
     if (!activePinnedUids.length) return;
 
     const desiredChildOrder = getDesiredChildOrder({
@@ -354,9 +536,117 @@ export default runExtension(async ({ extensionAPI }) => {
     }
   }
 
-  const pinBlock = (uid?: string): void => {
-    if (!uid) return;
+  const ensureConfigWatcher = (pageUid: string): void => {
+    if (configWatcherPageUid === pageUid && configWatcherCleanup) return;
+    configWatcherCleanup?.();
 
+    const entityId = `[:block/uid "${pageUid}"]`;
+    const watcher: PullWatchCallback = () => scheduleConfigSync();
+    window.roamAlphaAPI.data.addPullWatch(
+      CONFIG_PULL_PATTERN,
+      entityId,
+      watcher,
+    );
+    configWatcherPageUid = pageUid;
+    configWatcherCleanup = () => {
+      window.roamAlphaAPI.data.removePullWatch(
+        CONFIG_PULL_PATTERN,
+        entityId,
+        watcher,
+      );
+    };
+  };
+
+  const synchronizeSharedState = async (): Promise<void> => {
+    if (isUnloading) return;
+
+    const { pageUid, summary } = await enqueueMutation(reconcileConfigRecords);
+    ensureConfigWatcher(pageUid);
+
+    const { settings, staleUids } = buildPinnedBlocksByParent({
+      pinnedUids: summary.pinnedUids,
+      getParentUidByBlockUid,
+      getDirectChildUids,
+    });
+    applyCurrentSettings(settings);
+
+    if (staleUids.length) {
+      try {
+        const removedCount = await enqueueMutation(() =>
+          removePinRecords(staleUids),
+        );
+        maybeToastRemovedPin(removedCount);
+      } catch (error) {
+        console.error("Pinned Blocks failed to clean stale pin records", error);
+      }
+    }
+
+    Object.keys(settings).forEach(scheduleEnforceParent);
+  };
+
+  function scheduleConfigSync(): void {
+    if (configSyncTimeout !== null) {
+      window.clearTimeout(configSyncTimeout);
+    }
+    configSyncTimeout = window.setTimeout(() => {
+      configSyncTimeout = null;
+      void synchronizeSharedState().catch((error) => {
+        console.error("Pinned Blocks failed to synchronize shared pins", error);
+        toast({
+          id: "pinned-blocks-sync-failed",
+          content: "Pinned Blocks could not synchronize shared pin data.",
+          intent: "danger",
+        });
+      });
+    }, WATCH_DEBOUNCE_MS);
+  }
+
+  const migrateLegacySettings = async (): Promise<void> => {
+    const rawSettings = extensionAPI.settings.get(LEGACY_STORAGE_KEY);
+    if (
+      rawSettings === undefined ||
+      rawSettings === null ||
+      rawSettings === ""
+    ) {
+      return;
+    }
+
+    const legacySettings = normalizeLegacyPinnedBlocksSettings(rawSettings);
+    const legacyPinnedUids = Array.from(
+      new Set(Object.values(legacySettings).flat()),
+    );
+    let migratedCount = 0;
+
+    await enqueueMutation(async () => {
+      const { pageUid, summary } = await reconcileConfigRecords();
+      const existingPinnedUids = new Set(summary.pinnedUids);
+
+      for (const uid of legacyPinnedUids) {
+        if (existingPinnedUids.has(uid) || !getParentUidByBlockUid(uid))
+          continue;
+        await createRoamBlock({
+          parentUid: pageUid,
+          order: "last",
+          text: getPinRecordText(uid),
+          props: createPinRecordProps(uid),
+        });
+        existingPinnedUids.add(uid);
+        migratedCount += 1;
+      }
+    });
+
+    await extensionAPI.settings.set(LEGACY_STORAGE_KEY, "");
+    if (migratedCount) {
+      toast({
+        id: "pinned-blocks-migrated",
+        content: `Pinned Blocks migrated ${migratedCount} saved pin${migratedCount === 1 ? "" : "s"} to shared graph storage.`,
+        intent: "success",
+      });
+    }
+  };
+
+  const pinBlock = async (uid?: string): Promise<void> => {
+    if (!uid) return;
     const parentUid = getParentUidByBlockUid(uid);
     if (!parentUid) {
       toast({
@@ -367,116 +657,204 @@ export default runExtension(async ({ extensionAPI }) => {
       return;
     }
 
-    if (getPinnedParentUid({ uid, settings: currentSettings }) === parentUid) {
-      toast({
-        id: "pinned-blocks-already-pinned",
-        content: "That block is already pinned to its parent.",
+    try {
+      const created = await enqueueMutation(async () => {
+        const { pageUid, summary } = await reconcileConfigRecords();
+        if (summary.pinRecordUidsByPinnedUid.has(uid)) return false;
+        await createRoamBlock({
+          parentUid: pageUid,
+          order: "last",
+          text: getPinRecordText(uid),
+          props: createPinRecordProps(uid),
+        });
+        return true;
       });
-      return;
-    }
 
-    persistSettings(
-      addPinnedUid({ settings: currentSettings, parentUid, uid }),
-    );
-    syncWatchers();
-    scheduleEnforceParent(parentUid);
-    toast({
-      id: "pinned-blocks-pinned",
-      content: "Pinned block to the top of its parent.",
-      intent: "success",
-    });
+      if (!created) {
+        toast({
+          id: "pinned-blocks-already-pinned",
+          content: "That block is already pinned to its parent.",
+        });
+        return;
+      }
+
+      await synchronizeSharedState();
+      scheduleEnforceParent(parentUid);
+      toast({
+        id: "pinned-blocks-pinned",
+        content: "Pinned block to the top of its parent.",
+        intent: "success",
+      });
+    } catch (error) {
+      console.error(
+        "Pinned Blocks failed to create a shared pin record",
+        error,
+      );
+      toast({
+        id: "pinned-blocks-pin-failed",
+        content: "Pinned Blocks could not pin this block.",
+        intent: "danger",
+      });
+    }
   };
 
-  const unpinBlock = (uid?: string): void => {
+  const unpinBlock = async (uid?: string): Promise<void> => {
     if (!uid) return;
 
-    const parentUid = getPinnedParentUid({ uid, settings: currentSettings });
-    if (!parentUid) {
-      toast({
-        id: "pinned-blocks-not-pinned",
-        content: "That block is not pinned.",
-      });
-      return;
-    }
+    try {
+      const removedCount = await enqueueMutation(() => removePinRecords([uid]));
+      if (!removedCount) {
+        toast({
+          id: "pinned-blocks-not-pinned",
+          content: "That block is not pinned.",
+        });
+        return;
+      }
 
-    persistSettings(removePinnedUid({ settings: currentSettings, uid }));
-    syncWatchers();
-    toast({
-      id: "pinned-blocks-unpinned",
-      content: "Unpinned block.",
-      intent: "success",
-    });
+      await synchronizeSharedState();
+      toast({
+        id: "pinned-blocks-unpinned",
+        content: "Unpinned block.",
+        intent: "success",
+      });
+    } catch (error) {
+      console.error(
+        "Pinned Blocks failed to remove a shared pin record",
+        error,
+      );
+      toast({
+        id: "pinned-blocks-unpin-failed",
+        content: "Pinned Blocks could not unpin this block.",
+        intent: "danger",
+      });
+    }
   };
 
   const getFocusedUid = (): string | null =>
     window.roamAlphaAPI.ui.getFocusedBlock()?.["block-uid"] || null;
 
-  const mutationObserver = new MutationObserver(scheduleIndicatorSync);
-  mutationObserver.observe(document.body, { childList: true, subtree: true });
-
-  window.roamAlphaAPI.ui.blockContextMenu.addCommand({
-    label: PIN_CONTEXT_COMMAND,
-    callback: (context) => pinBlock(context["block-uid"]),
-  });
-  window.roamAlphaAPI.ui.blockContextMenu.addCommand({
-    label: UNPIN_CONTEXT_COMMAND,
-    callback: (context) => unpinBlock(context["block-uid"]),
-  });
-
-  void extensionAPI.ui.commandPalette.addCommand({
-    label: TOGGLE_PIN_COMMAND,
-    callback: () => {
-      const uid = getFocusedUid();
-      if (!uid) return;
-
-      if (getPinnedParentUid({ uid, settings: currentSettings })) {
-        unpinBlock(uid);
-      } else {
-        pinBlock(uid);
-      }
-    },
-  });
-  void extensionAPI.ui.commandPalette.addCommand({
-    label: PIN_FOCUSED_COMMAND,
-    callback: () => pinBlock(getFocusedUid() || undefined),
-  });
-  void extensionAPI.ui.commandPalette.addCommand({
-    label: UNPIN_FOCUSED_COMMAND,
-    callback: () => unpinBlock(getFocusedUid() || undefined),
-  });
-
-  syncWatchers();
-  Object.keys(currentSettings).forEach(scheduleEnforceParent);
-  scheduleIndicatorSync();
-
-  if (process.env.NODE_ENV === "development") {
-    renderToast({
-      id: "pinned-blocks-loaded",
-      content: "Successfully loaded Pinned Blocks",
-      intent: "success",
-      timeout: 500,
-    });
-  }
-
-  return {
-    elements: [style],
-    commands: [TOGGLE_PIN_COMMAND, PIN_FOCUSED_COMMAND, UNPIN_FOCUSED_COMMAND],
-    unload: () => {
-      if (indicatorFrame !== null) window.cancelAnimationFrame(indicatorFrame);
-      mutationObserver.disconnect();
-      enforceTimeouts.forEach((timeout) => window.clearTimeout(timeout));
-      enforceTimeouts.clear();
-      watcherCleanups.forEach((cleanup) => cleanup());
-      watcherCleanups.clear();
-      document
-        .querySelectorAll<HTMLElement>(`.${PINNED_BLOCK_CLASS}`)
-        .forEach(removePinnedIndicator);
+  const cleanup = (): void => {
+    if (hasCleanedUp) return;
+    hasCleanedUp = true;
+    isUnloading = true;
+    if (indicatorFrame !== null) window.cancelAnimationFrame(indicatorFrame);
+    if (configSyncTimeout !== null) window.clearTimeout(configSyncTimeout);
+    mutationObserver?.disconnect();
+    enforceTimeouts.forEach((timeout) => window.clearTimeout(timeout));
+    enforceTimeouts.clear();
+    parentWatcherCleanups.forEach((cleanup) => cleanup());
+    parentWatcherCleanups.clear();
+    configWatcherCleanup?.();
+    configWatcherCleanup = null;
+    document
+      .querySelectorAll<HTMLElement>(`.${PINNED_BLOCK_CLASS}`)
+      .forEach(removePinnedIndicator);
+    if (pinContextCommandRegistered) {
       window.roamAlphaAPI.ui.blockContextMenu.removeCommand({
         label: PIN_CONTEXT_COMMAND,
       });
+    }
+    if (unpinContextCommandRegistered) {
       window.roamAlphaAPI.ui.blockContextMenu.removeCommand({
         label: UNPIN_CONTEXT_COMMAND,
       });
-    },
+    }
+    paletteCommandsRegistered.forEach((label) => {
+      void extensionAPI.ui.commandPalette.removeCommand({ label });
+    });
+    paletteCommandsRegistered.clear();
+    style.remove();
   };
-});
+
+  try {
+    await enqueueMutation(reconcileConfigRecords);
+    try {
+      await migrateLegacySettings();
+    } catch (error) {
+      console.error("Pinned Blocks failed to migrate legacy settings", error);
+      toast({
+        id: "pinned-blocks-migration-failed",
+        content:
+          "Pinned Blocks could not migrate saved pins. It will retry next time.",
+        intent: "danger",
+      });
+    }
+    await synchronizeSharedState();
+
+    mutationObserver = new MutationObserver(scheduleIndicatorSync);
+    mutationObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    window.roamAlphaAPI.ui.blockContextMenu.addCommand({
+      label: PIN_CONTEXT_COMMAND,
+      callback: (context) => void pinBlock(context["block-uid"]),
+    });
+    pinContextCommandRegistered = true;
+    window.roamAlphaAPI.ui.blockContextMenu.addCommand({
+      label: UNPIN_CONTEXT_COMMAND,
+      callback: (context) => void unpinBlock(context["block-uid"]),
+    });
+    unpinContextCommandRegistered = true;
+
+    await extensionAPI.ui.commandPalette.addCommand({
+      label: TOGGLE_PIN_COMMAND,
+      callback: () => {
+        const uid = getFocusedUid();
+        if (!uid) return;
+        if (getPinnedParentUid({ uid, settings: currentSettings })) {
+          void unpinBlock(uid);
+        } else {
+          void pinBlock(uid);
+        }
+      },
+    });
+    paletteCommandsRegistered.add(TOGGLE_PIN_COMMAND);
+    await extensionAPI.ui.commandPalette.addCommand({
+      label: PIN_FOCUSED_COMMAND,
+      callback: () => void pinBlock(getFocusedUid() || undefined),
+    });
+    paletteCommandsRegistered.add(PIN_FOCUSED_COMMAND);
+    await extensionAPI.ui.commandPalette.addCommand({
+      label: UNPIN_FOCUSED_COMMAND,
+      callback: () => void unpinBlock(getFocusedUid() || undefined),
+    });
+    paletteCommandsRegistered.add(UNPIN_FOCUSED_COMMAND);
+
+    if (process.env.NODE_ENV === "development") {
+      renderToast({
+        id: "pinned-blocks-loaded",
+        content: "Successfully loaded Pinned Blocks",
+        intent: "success",
+        timeout: 500,
+      });
+    }
+
+    return cleanup;
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
+};
+
+let unloadExtension: (() => void) | null = null;
+
+export default {
+  onload: async (args: OnloadArgs): Promise<void> => {
+    try {
+      unloadExtension = await initializeExtension(args);
+    } catch (error) {
+      console.error("Pinned Blocks failed to load", error);
+      toast({
+        id: "pinned-blocks-load-failed",
+        content: "Pinned Blocks failed to load.",
+        intent: "danger",
+      });
+    }
+  },
+  onunload: (): void => {
+    unloadExtension?.();
+    unloadExtension = null;
+  },
+};

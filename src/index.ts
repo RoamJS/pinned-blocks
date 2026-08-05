@@ -561,6 +561,7 @@ const initializeExtension = async ({
     if (isUnloading) return;
 
     const { pageUid, summary } = await enqueueMutation(reconcileConfigRecords);
+    if (isUnloading) return;
     ensureConfigWatcher(pageUid);
 
     const { settings, staleUids } = buildPinnedBlocksByParent({

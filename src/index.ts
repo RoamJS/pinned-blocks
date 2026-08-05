@@ -643,21 +643,12 @@ const initializeExtension = async ({
     return migratedCount;
   };
 
-  const removeLegacyMigrationCommand = async (): Promise<void> => {
-    if (!paletteCommandsRegistered.has(MIGRATE_LEGACY_COMMAND)) return;
-    await extensionAPI.ui.commandPalette.removeCommand({
-      label: MIGRATE_LEGACY_COMMAND,
-    });
-    paletteCommandsRegistered.delete(MIGRATE_LEGACY_COMMAND);
-  };
-
   const runLegacyMigration = async (): Promise<void> => {
     if (migrationInProgress) return;
     migrationInProgress = true;
 
     try {
       const migratedCount = await migrateLegacySettings();
-      await removeLegacyMigrationCommand();
       toast({
         id: "pinned-blocks-migrated",
         content: migratedCount
@@ -844,18 +835,11 @@ const initializeExtension = async ({
     });
     paletteCommandsRegistered.add(UNPIN_FOCUSED_COMMAND);
 
-    const legacySettings = extensionAPI.settings.get(LEGACY_STORAGE_KEY);
-    if (
-      legacySettings !== undefined &&
-      legacySettings !== null &&
-      legacySettings !== ""
-    ) {
-      await extensionAPI.ui.commandPalette.addCommand({
-        label: MIGRATE_LEGACY_COMMAND,
-        callback: () => void runLegacyMigration(),
-      });
-      paletteCommandsRegistered.add(MIGRATE_LEGACY_COMMAND);
-    }
+    await extensionAPI.ui.commandPalette.addCommand({
+      label: MIGRATE_LEGACY_COMMAND,
+      callback: () => void runLegacyMigration(),
+    });
+    paletteCommandsRegistered.add(MIGRATE_LEGACY_COMMAND);
 
     if (process.env.NODE_ENV === "development") {
       renderToast({

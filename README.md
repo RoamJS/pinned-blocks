@@ -40,16 +40,15 @@ the `roamjs-pinned-blocks` block-props namespace. The page and notice remain
 when there are no pins; pin-data children are removed.
 
 Existing pins stored in the legacy `pinned-blocks-by-parent` extension setting
-can be migrated once with the command palette action listed below. The action is
-only available while legacy settings exist, is safe to retry, and removes itself
-after a successful migration. Pinned Blocks does not use browser local storage.
+can be migrated with the command palette action listed below. The action is safe
+to retry. Pinned Blocks does not use browser local storage.
 
 ## Commands
 
 - `Pinned Blocks: Toggle Pin Focused Block`
 - `Pinned Blocks: Pin Focused Block`
 - `Pinned Blocks: Unpin Focused Block`
-- `Pinned Blocks: Migrate Legacy Pins to Shared Storage` (only when needed)
+- `Pinned Blocks: Migrate Legacy Pins to Shared Storage`
 
 ## Styling
 

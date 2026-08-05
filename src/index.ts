@@ -4,6 +4,7 @@ import getPageUidByPageTitle from "roamjs-components/queries/getPageUidByPageTit
 import getParentUidByBlockUid from "roamjs-components/queries/getParentUidByBlockUid";
 import getShallowTreeByParentUid from "roamjs-components/queries/getShallowTreeByParentUid";
 import type { OnloadArgs, PullBlock } from "roamjs-components/types";
+import { createAsyncLifecycle } from "~/utils/asyncLifecycle";
 import {
   CONFIG_PAGE_TITLE,
   LEGACY_STORAGE_KEY,
@@ -198,7 +199,8 @@ const getPinRecordText = (uid: string): string => `Pinned block data: ${uid}`;
 
 const initializeExtension = async ({
   extensionAPI,
-}: OnloadArgs): Promise<() => void> => {
+  isCancelled,
+}: OnloadArgs & { isCancelled: () => boolean }): Promise<() => void> => {
   let currentSettings: PinnedBlocksByParent = {};
   let configWatcherCleanup: (() => void) | null = null;
   let configWatcherPageUid = "";
@@ -215,6 +217,7 @@ const initializeExtension = async ({
   let unpinContextCommandRegistered = false;
   let migrationInProgress = false;
   const paletteCommandsRegistered = new Set<string>();
+  const isInactive = (): boolean => isUnloading || isCancelled();
 
   const style = addStyle(
     `
@@ -429,6 +432,7 @@ const initializeExtension = async ({
   };
 
   const scheduleEnforceParent = (parentUid: string): void => {
+    if (isInactive()) return;
     const existingTimeout = enforceTimeouts.get(parentUid);
     if (existingTimeout) window.clearTimeout(existingTimeout);
 
@@ -486,7 +490,7 @@ const initializeExtension = async ({
 
   async function enforceParentOrder(parentUid: string): Promise<void> {
     enforceTimeouts.delete(parentUid);
-    if (isUnloading) return;
+    if (isInactive()) return;
 
     const currentChildUids = getDirectChildUids(parentUid);
     const reconciled = reconcilePinsForParent({
@@ -561,10 +565,10 @@ const initializeExtension = async ({
   };
 
   const synchronizeSharedState = async (): Promise<void> => {
-    if (isUnloading) return;
+    if (isInactive()) return;
 
     const { pageUid, summary } = await enqueueMutation(reconcileConfigRecords);
-    if (isUnloading) return;
+    if (isInactive()) return;
     ensureConfigWatcher(pageUid);
 
     const { settings, staleUids } = buildPinnedBlocksByParent({
@@ -793,6 +797,7 @@ const initializeExtension = async ({
   try {
     await enqueueMutation(reconcileConfigRecords);
     await synchronizeSharedState();
+    if (isInactive()) return cleanup;
 
     mutationObserver = new MutationObserver(scheduleIndicatorSync);
     mutationObserver.observe(document.body, {
@@ -857,12 +862,15 @@ const initializeExtension = async ({
   }
 };
 
-let unloadExtension: (() => void) | null = null;
+const extensionLifecycle = createAsyncLifecycle();
 
 export default {
   onload: async (args: OnloadArgs): Promise<void> => {
     try {
-      unloadExtension = await initializeExtension(args);
+      await extensionLifecycle.load({
+        initialize: (isCancelled) =>
+          initializeExtension({ ...args, isCancelled }),
+      });
     } catch (error) {
       console.error("Pinned Blocks failed to load", error);
       toast({
@@ -873,7 +881,6 @@ export default {
     }
   },
   onunload: (): void => {
-    unloadExtension?.();
-    unloadExtension = null;
+    extensionLifecycle.unload();
   },
 };

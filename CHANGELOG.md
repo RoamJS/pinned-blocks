@@ -20,6 +20,7 @@
 - Fixed pins under daily note pages disappearing after reloading the extension.
 - Fixed rapid pin and unpin actions so shared graph mutations run in order.
 - Fixed in-flight shared-state synchronization so it cannot restore watchers after the extension unloads.
+- Fixed extension resources being registered when asynchronous startup finishes after the extension unloads.
 - Fixed stale pin indicators that could remain when Roam reuses rendered block containers.
 - Fixed pin indicators being clipped when pinned pages are viewed in the right sidebar.
 - Fixed graph record props to use Roam's normalized key format and repair records written with duplicate namespace prefixes.

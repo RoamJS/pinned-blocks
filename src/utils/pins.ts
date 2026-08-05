@@ -39,6 +39,22 @@ export const normalizeLegacyPinnedBlocksSettings = (
   );
 };
 
+export const getLegacyPinnedUidsToMigrate = ({
+  rawSettings,
+  existingPinnedUids,
+  getParentUidByBlockUid,
+}: {
+  rawSettings: unknown;
+  existingPinnedUids: Set<string>;
+  getParentUidByBlockUid: (uid: string) => string;
+}): string[] => {
+  const legacySettings = normalizeLegacyPinnedBlocksSettings(rawSettings);
+  return Array.from(new Set(Object.values(legacySettings).flat())).filter(
+    (uid) =>
+      !existingPinnedUids.has(uid) && Boolean(getParentUidByBlockUid(uid)),
+  );
+};
+
 export const getPinnedParentUid = ({
   uid,
   settings,

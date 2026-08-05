@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   getDesiredChildOrder,
+  getLegacyPinnedUidsToMigrate,
   getPinnedParentUid,
   normalizeLegacyPinnedBlocksSettings,
   ordersMatch,
@@ -41,6 +42,30 @@ test("normalizeLegacyPinnedBlocksSettings keeps daily note parent uids", () => {
   ).toEqual({
     "07-03-2026": ["block1234"],
   });
+});
+
+test("legacy migration skips existing and stale pins on every retry", () => {
+  const rawSettings = {
+    parent123: ["block1234", "block5678", "block9999"],
+    parent456: ["block5678"],
+  };
+  const getParentUidByBlockUid = (uid: string): string =>
+    uid === "block9999" ? "" : "parent123";
+
+  expect(
+    getLegacyPinnedUidsToMigrate({
+      rawSettings,
+      existingPinnedUids: new Set(["block1234"]),
+      getParentUidByBlockUid,
+    }),
+  ).toEqual(["block5678"]);
+  expect(
+    getLegacyPinnedUidsToMigrate({
+      rawSettings,
+      existingPinnedUids: new Set(["block1234", "block5678"]),
+      getParentUidByBlockUid,
+    }),
+  ).toEqual([]);
 });
 
 test("pin lookups return parent ownership", () => {

@@ -22,8 +22,8 @@ import {
 } from "~/utils/pinRecords";
 import {
   getDesiredChildOrder,
+  getLegacyPinnedUidsToMigrate,
   getPinnedParentUid,
-  normalizeLegacyPinnedBlocksSettings,
   ordersMatch,
   reconcilePinsForParent,
   shouldRemovePinnedIndicator,
@@ -44,6 +44,8 @@ type ConfigPullChild = {
 const TOGGLE_PIN_COMMAND = "Pinned Blocks: Toggle Pin Focused Block";
 const PIN_FOCUSED_COMMAND = "Pinned Blocks: Pin Focused Block";
 const UNPIN_FOCUSED_COMMAND = "Pinned Blocks: Unpin Focused Block";
+const MIGRATE_LEGACY_COMMAND =
+  "Pinned Blocks: Migrate Legacy Pins to Shared Storage";
 const PIN_CONTEXT_COMMAND = "Pinned Blocks: Pin block";
 const UNPIN_CONTEXT_COMMAND = "Pinned Blocks: Unpin block";
 const PARENT_PULL_PATTERN = "[{:block/children [:block/uid :block/order]}]";
@@ -211,6 +213,7 @@ const initializeExtension = async ({
   let mutationObserver: MutationObserver | null = null;
   let pinContextCommandRegistered = false;
   let unpinContextCommandRegistered = false;
+  let migrationInProgress = false;
   const paletteCommandsRegistered = new Set<string>();
 
   const style = addStyle(
@@ -602,29 +605,28 @@ const initializeExtension = async ({
     }, WATCH_DEBOUNCE_MS);
   }
 
-  const migrateLegacySettings = async (): Promise<void> => {
+  const migrateLegacySettings = async (): Promise<number> => {
     const rawSettings = extensionAPI.settings.get(LEGACY_STORAGE_KEY);
     if (
       rawSettings === undefined ||
       rawSettings === null ||
       rawSettings === ""
     ) {
-      return;
+      return 0;
     }
 
-    const legacySettings = normalizeLegacyPinnedBlocksSettings(rawSettings);
-    const legacyPinnedUids = Array.from(
-      new Set(Object.values(legacySettings).flat()),
-    );
     let migratedCount = 0;
 
     await enqueueMutation(async () => {
       const { pageUid, summary } = await reconcileConfigRecords();
       const existingPinnedUids = new Set(summary.pinnedUids);
+      const legacyPinnedUids = getLegacyPinnedUidsToMigrate({
+        rawSettings,
+        existingPinnedUids,
+        getParentUidByBlockUid,
+      });
 
       for (const uid of legacyPinnedUids) {
-        if (existingPinnedUids.has(uid) || !getParentUidByBlockUid(uid))
-          continue;
         await createRoamBlock({
           parentUid: pageUid,
           order: "last",
@@ -636,13 +638,43 @@ const initializeExtension = async ({
       }
     });
 
+    await synchronizeSharedState();
     await extensionAPI.settings.set(LEGACY_STORAGE_KEY, "");
-    if (migratedCount) {
+    return migratedCount;
+  };
+
+  const removeLegacyMigrationCommand = async (): Promise<void> => {
+    if (!paletteCommandsRegistered.has(MIGRATE_LEGACY_COMMAND)) return;
+    await extensionAPI.ui.commandPalette.removeCommand({
+      label: MIGRATE_LEGACY_COMMAND,
+    });
+    paletteCommandsRegistered.delete(MIGRATE_LEGACY_COMMAND);
+  };
+
+  const runLegacyMigration = async (): Promise<void> => {
+    if (migrationInProgress) return;
+    migrationInProgress = true;
+
+    try {
+      const migratedCount = await migrateLegacySettings();
+      await removeLegacyMigrationCommand();
       toast({
         id: "pinned-blocks-migrated",
-        content: `Pinned Blocks migrated ${migratedCount} saved pin${migratedCount === 1 ? "" : "s"} to shared graph storage.`,
+        content: migratedCount
+          ? `Pinned Blocks migrated ${migratedCount} saved pin${migratedCount === 1 ? "" : "s"} to shared graph storage.`
+          : "Pinned Blocks found no legacy pins that still needed migration.",
         intent: "success",
       });
+    } catch (error) {
+      console.error("Pinned Blocks failed to migrate legacy settings", error);
+      toast({
+        id: "pinned-blocks-migration-failed",
+        content:
+          "Pinned Blocks could not migrate saved pins. Run the migration command to retry.",
+        intent: "danger",
+      });
+    } finally {
+      migrationInProgress = false;
     }
   };
 
@@ -769,17 +801,6 @@ const initializeExtension = async ({
 
   try {
     await enqueueMutation(reconcileConfigRecords);
-    try {
-      await migrateLegacySettings();
-    } catch (error) {
-      console.error("Pinned Blocks failed to migrate legacy settings", error);
-      toast({
-        id: "pinned-blocks-migration-failed",
-        content:
-          "Pinned Blocks could not migrate saved pins. It will retry next time.",
-        intent: "danger",
-      });
-    }
     await synchronizeSharedState();
 
     mutationObserver = new MutationObserver(scheduleIndicatorSync);
@@ -822,6 +843,19 @@ const initializeExtension = async ({
       callback: () => void unpinBlock(getFocusedUid() || undefined),
     });
     paletteCommandsRegistered.add(UNPIN_FOCUSED_COMMAND);
+
+    const legacySettings = extensionAPI.settings.get(LEGACY_STORAGE_KEY);
+    if (
+      legacySettings !== undefined &&
+      legacySettings !== null &&
+      legacySettings !== ""
+    ) {
+      await extensionAPI.ui.commandPalette.addCommand({
+        label: MIGRATE_LEGACY_COMMAND,
+        callback: () => void runLegacyMigration(),
+      });
+      paletteCommandsRegistered.add(MIGRATE_LEGACY_COMMAND);
+    }
 
     if (process.env.NODE_ENV === "development") {
       renderToast({

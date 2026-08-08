@@ -29,7 +29,6 @@ import {
   type PinnedBlocksByParent,
 } from "~/utils/pins";
 
-type ExtensionAPI = OnloadArgs["extensionAPI"];
 type PullWatchCallback = Parameters<
   typeof window.roamAlphaAPI.data.addPullWatch
 >[2];

@@ -7,7 +7,6 @@ import type { OnloadArgs, PullBlock } from "roamjs-components/types";
 import { createAsyncLifecycle } from "~/utils/asyncLifecycle";
 import {
   CONFIG_PAGE_TITLE,
-  LEGACY_STORAGE_KEY,
   NOTICE_TEXT,
   buildPinnedBlocksByParent,
   blockPropsRequireRewrite,
@@ -23,7 +22,6 @@ import {
 } from "~/utils/pinRecords";
 import {
   getDesiredChildOrder,
-  getLegacyPinnedUidsToMigrate,
   getPinnedParentUid,
   ordersMatch,
   reconcilePinsForParent,
@@ -31,7 +29,6 @@ import {
   type PinnedBlocksByParent,
 } from "~/utils/pins";
 
-type ExtensionAPI = OnloadArgs["extensionAPI"];
 type PullWatchCallback = Parameters<
   typeof window.roamAlphaAPI.data.addPullWatch
 >[2];
@@ -45,8 +42,6 @@ type ConfigPullChild = {
 const TOGGLE_PIN_COMMAND = "Pinned Blocks: Toggle Pin Focused Block";
 const PIN_FOCUSED_COMMAND = "Pinned Blocks: Pin Focused Block";
 const UNPIN_FOCUSED_COMMAND = "Pinned Blocks: Unpin Focused Block";
-const MIGRATE_LEGACY_COMMAND =
-  "Pinned Blocks: Migrate Legacy Pins to Shared Storage";
 const PIN_CONTEXT_COMMAND = "Pinned Blocks: Pin block";
 const UNPIN_CONTEXT_COMMAND = "Pinned Blocks: Unpin block";
 const PARENT_PULL_PATTERN = "[{:block/children [:block/uid :block/order]}]";
@@ -215,7 +210,6 @@ const initializeExtension = async ({
   let mutationObserver: MutationObserver | null = null;
   let pinContextCommandRegistered = false;
   let unpinContextCommandRegistered = false;
-  let migrationInProgress = false;
   const paletteCommandsRegistered = new Set<string>();
   const isInactive = (): boolean => isUnloading || isCancelled();
 
@@ -609,70 +603,6 @@ const initializeExtension = async ({
     }, WATCH_DEBOUNCE_MS);
   }
 
-  const migrateLegacySettings = async (): Promise<number> => {
-    const rawSettings = extensionAPI.settings.get(LEGACY_STORAGE_KEY);
-    if (
-      rawSettings === undefined ||
-      rawSettings === null ||
-      rawSettings === ""
-    ) {
-      return 0;
-    }
-
-    let migratedCount = 0;
-
-    await enqueueMutation(async () => {
-      const { pageUid, summary } = await reconcileConfigRecords();
-      const existingPinnedUids = new Set(summary.pinnedUids);
-      const legacyPinnedUids = getLegacyPinnedUidsToMigrate({
-        rawSettings,
-        existingPinnedUids,
-        getParentUidByBlockUid,
-      });
-
-      for (const uid of legacyPinnedUids) {
-        await createRoamBlock({
-          parentUid: pageUid,
-          order: "last",
-          text: getPinRecordText(uid),
-          props: createPinRecordProps(uid),
-        });
-        existingPinnedUids.add(uid);
-        migratedCount += 1;
-      }
-    });
-
-    await synchronizeSharedState();
-    await extensionAPI.settings.set(LEGACY_STORAGE_KEY, "");
-    return migratedCount;
-  };
-
-  const runLegacyMigration = async (): Promise<void> => {
-    if (migrationInProgress) return;
-    migrationInProgress = true;
-
-    try {
-      const migratedCount = await migrateLegacySettings();
-      toast({
-        id: "pinned-blocks-migrated",
-        content: migratedCount
-          ? `Pinned Blocks migrated ${migratedCount} saved pin${migratedCount === 1 ? "" : "s"} to shared graph storage.`
-          : "Pinned Blocks found no legacy pins that still needed migration.",
-        intent: "success",
-      });
-    } catch (error) {
-      console.error("Pinned Blocks failed to migrate legacy settings", error);
-      toast({
-        id: "pinned-blocks-migration-failed",
-        content:
-          "Pinned Blocks could not migrate saved pins. Run the migration command to retry.",
-        intent: "danger",
-      });
-    } finally {
-      migrationInProgress = false;
-    }
-  };
-
   const pinBlock = async (uid?: string): Promise<void> => {
     if (!uid) return;
     const parentUid = getParentUidByBlockUid(uid);
@@ -839,12 +769,6 @@ const initializeExtension = async ({
       callback: () => void unpinBlock(getFocusedUid() || undefined),
     });
     paletteCommandsRegistered.add(UNPIN_FOCUSED_COMMAND);
-
-    await extensionAPI.ui.commandPalette.addCommand({
-      label: MIGRATE_LEGACY_COMMAND,
-      callback: () => void runLegacyMigration(),
-    });
-    paletteCommandsRegistered.add(MIGRATE_LEGACY_COMMAND);
 
     if (process.env.NODE_ENV === "development") {
       renderToast({

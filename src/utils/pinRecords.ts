@@ -1,7 +1,6 @@
 import { isValidPinnedBlockUid, type PinnedBlocksByParent } from "~/utils/pins";
 
 export const CONFIG_PAGE_TITLE = "roam/js/pinned-blocks";
-export const LEGACY_STORAGE_KEY = "pinned-blocks-by-parent";
 export const PINNED_BLOCKS_PROP = "roamjs-pinned-blocks";
 export const PIN_RECORD_VERSION = 1;
 export const NOTICE_TEXT =

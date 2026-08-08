@@ -1,72 +1,11 @@
 import { expect, test } from "@playwright/test";
 import {
   getDesiredChildOrder,
-  getLegacyPinnedUidsToMigrate,
   getPinnedParentUid,
-  normalizeLegacyPinnedBlocksSettings,
   ordersMatch,
   reconcilePinsForParent,
   shouldRemovePinnedIndicator,
 } from "../src/utils/pins";
-
-test("normalizeLegacyPinnedBlocksSettings parses, dedupes, and removes invalid entries", () => {
-  expect(
-    normalizeLegacyPinnedBlocksSettings(
-      JSON.stringify({
-        parent123: ["block1234", "block1234", "bad", 42],
-        "bad parent": ["block5678"],
-        parent456: "not an array",
-      }),
-    ),
-  ).toEqual({
-    parent123: ["block1234"],
-  });
-});
-
-test("normalizeLegacyPinnedBlocksSettings accepts already parsed settings", () => {
-  expect(
-    normalizeLegacyPinnedBlocksSettings({
-      parent123: ["block1234"],
-      parent456: [],
-    }),
-  ).toEqual({
-    parent123: ["block1234"],
-  });
-});
-
-test("normalizeLegacyPinnedBlocksSettings keeps daily note parent uids", () => {
-  expect(
-    normalizeLegacyPinnedBlocksSettings({
-      "07-03-2026": ["block1234"],
-    }),
-  ).toEqual({
-    "07-03-2026": ["block1234"],
-  });
-});
-
-test("legacy migration skips existing and stale pins on every retry", () => {
-  const rawSettings = {
-    parent123: ["block1234", "block5678", "block9999"],
-    parent456: ["block5678"],
-  };
-  const getParentUidByBlockUid = (uid: string): string =>
-    uid === "block9999" ? "" : "parent123";
-
-  expect(
-    getLegacyPinnedUidsToMigrate({
-      rawSettings,
-      existingPinnedUids: new Set(["block1234"]),
-      getParentUidByBlockUid,
-    }),
-  ).toEqual(["block5678"]);
-  expect(
-    getLegacyPinnedUidsToMigrate({
-      rawSettings,
-      existingPinnedUids: new Set(["block1234", "block5678"]),
-      getParentUidByBlockUid,
-    }),
-  ).toEqual([]);
-});
 
 test("pin lookups return parent ownership", () => {
   const settings = {

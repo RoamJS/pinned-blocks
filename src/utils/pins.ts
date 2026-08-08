@@ -9,52 +9,6 @@ export const isValidPinnedBlockUid = (uid: string): boolean =>
 export const isValidPinnedParentUid = (uid: string): boolean =>
   isValidPinnedBlockUid(uid) || DAILY_NOTE_UID_REGEX.test(uid);
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-export const normalizeLegacyPinnedBlocksSettings = (
-  value: unknown,
-): PinnedBlocksByParent => {
-  const parsed = typeof value === "string" ? JSON.parse(value || "{}") : value;
-  if (!isRecord(parsed)) return {};
-
-  return Object.fromEntries(
-    Object.entries(parsed)
-      .map(([parentUid, uids]): [string, string[]] => [
-        parentUid,
-        Array.isArray(uids)
-          ? Array.from(
-              new Set(
-                uids.filter(
-                  (uid): uid is string =>
-                    typeof uid === "string" && isValidPinnedBlockUid(uid),
-                ),
-              ),
-            )
-          : [],
-      ])
-      .filter(
-        ([parentUid, uids]) => isValidPinnedParentUid(parentUid) && uids.length,
-      ),
-  );
-};
-
-export const getLegacyPinnedUidsToMigrate = ({
-  rawSettings,
-  existingPinnedUids,
-  getParentUidByBlockUid,
-}: {
-  rawSettings: unknown;
-  existingPinnedUids: Set<string>;
-  getParentUidByBlockUid: (uid: string) => string;
-}): string[] => {
-  const legacySettings = normalizeLegacyPinnedBlocksSettings(rawSettings);
-  return Array.from(new Set(Object.values(legacySettings).flat())).filter(
-    (uid) =>
-      !existingPinnedUids.has(uid) && Boolean(getParentUidByBlockUid(uid)),
-  );
-};
-
 export const getPinnedParentUid = ({
   uid,
   settings,

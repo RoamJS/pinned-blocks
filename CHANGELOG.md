@@ -2,6 +2,11 @@
 
 ## 1.0.0
 
+- Kept linked reference widths and alignment stable while pinning, with full source titles, a pinned heading, and pending button states.
+- Added linked reference pins for daily note pages and arrow-key navigation between pin controls.
+
+- Added pin buttons for keeping selected linked references at the top of a page's results, with shared pins saved separately for each target.
+
 - Added Pinned Blocks for child blocks under any parent block or page.
 - Added clearer package description and search keywords for Roam Depot discovery.
 - Added command palette and block context menu actions for pinning and unpinning.

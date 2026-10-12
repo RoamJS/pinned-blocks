@@ -5,6 +5,7 @@ import {
   buildPinnedBlocksByParent,
   createNoticeRecordProps,
   createPinRecordProps,
+  createReferencePinRecordProps,
   getPinnedBlocksRecordProps,
   mergePinnedBlocksRecordProps,
   normalizeBlockProps,
@@ -139,6 +140,8 @@ test("config summaries ignore malformed and unrelated child props", () => {
     duplicateRecordUids: [],
     pinRecordUidsByPinnedUid: new Map(),
     pinnedUids: [],
+    referencePins: [],
+    referenceRecordUidsByKey: new Map(),
   });
 });
 
@@ -172,5 +175,71 @@ test("derived settings report deleted pins and retain transient live pins", () =
   ).toEqual({
     settings: { parent123: ["block1234"] },
     staleUids: ["block5678"],
+  });
+});
+
+test("reference pins round-trip without becoming outline pins", () => {
+  const props = createReferencePinRecordProps({
+    targetUid: "target123",
+    blockUid: "block1234",
+  });
+  expect(getPinnedBlocksRecordProps(props)).toEqual({
+    type: "reference-pin",
+    version: 1,
+    "target-uid": "target123",
+    "block-uid": "block1234",
+  });
+  const summary = summarizeConfigRecords([
+    child({ uid: "record001", props }),
+    child({ uid: "record002", props: createPinRecordProps("block1234") }),
+    child({
+      uid: "record003",
+      props: createReferencePinRecordProps({
+        targetUid: "target456",
+        blockUid: "block1234",
+      }),
+    }),
+    child({ uid: "record004", props }),
+  ]);
+  expect(summary.pinnedUids).toEqual(["block1234"]);
+  expect(summary.referencePins).toEqual([
+    { targetUid: "target123", blockUid: "block1234" },
+    { targetUid: "target456", blockUid: "block1234" },
+  ]);
+  expect(summary.duplicateRecordUids).toEqual(["record004"]);
+  expect(summary.referenceRecordUidsByKey.get("target123:block1234")).toEqual([
+    "record001",
+    "record004",
+  ]);
+});
+
+test("reference pins reject missing or invalid target uids", () => {
+  for (const targetUid of [undefined, "bad", 123]) {
+    expect(
+      getPinnedBlocksRecordProps({
+        [PINNED_BLOCKS_PROP]: {
+          type: "reference-pin",
+          version: 1,
+          "target-uid": targetUid,
+          "block-uid": "block1234",
+        },
+      }),
+    ).toBeNull();
+  }
+});
+
+test("daily note targets round-trip through shared reference records", () => {
+  expect(
+    getPinnedBlocksRecordProps(
+      createReferencePinRecordProps({
+        targetUid: "10-12-2026",
+        blockUid: "block1234",
+      }),
+    ),
+  ).toEqual({
+    type: "reference-pin",
+    version: 1,
+    "target-uid": "10-12-2026",
+    "block-uid": "block1234",
   });
 });

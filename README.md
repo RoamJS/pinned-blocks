@@ -36,7 +36,7 @@ to move between the pin controls in their displayed order. Tab visits the pinned
 Reference pins are saved separately for each target page or block under
 `roam/js/pinned-blocks` and shared with collaborators running the extension.
 They change the displayed reference order without changing source block order.
-Saved reference pins render immediately at the top, including references Roam has not lazy-loaded yet. When Roam loads the original row, the extension hides that duplicate. Unpinning removes the top copy and restores the original row. Roam's include/remove filters still apply to pinned copies. Deleted blocks and blocks that no longer reference the target are not shown.
+Saved reference pins render immediately at the top, including references Roam has not lazy-loaded yet. Once the pinned copy has rendered successfully, the extension hides its original row when Roam loads it. While rendering is pending or has failed, the original row remains available. A failed pinned copy offers a Retry button. Unpinning removes the top copy and restores the original row. Roam's include/remove filters still apply to pinned copies. Deleted blocks and blocks that no longer reference the target are not shown.
 
 ## Multiplayer graphs
 

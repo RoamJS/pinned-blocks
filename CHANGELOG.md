@@ -2,6 +2,9 @@
 
 ## 1.0.0
 
+- Fixed pins from the previous page appearing after navigation to collapsed reference groups.
+- Kept original reference rows available until pinned copies finish rendering, with a retry action if rendering fails.
+
 - Hid inactive linked reference pin buttons until hover or keyboard focus, while keeping active pins visible.
 - Fixed saved pins appearing when the main linked reference groups are initially collapsed.
 

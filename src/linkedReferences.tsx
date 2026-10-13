@@ -33,7 +33,12 @@ const DUPLICATE_CLASS = "roamjs-reference-pin-duplicate";
 const EMPTY_HEADING_CLASS = "roamjs-reference-pin-empty-heading";
 const PANEL_CLASS = "roamjs-reference-pin-panel";
 type MountedControl = { mount: HTMLSpanElement; signature: string };
-type MountedPanel = { mount: HTMLDivElement; signature: string };
+type MountedPanel = {
+  mount: HTMLDivElement;
+  signature: string;
+  renderedKeys: Set<string>;
+  onRendered: (key: string) => void;
+};
 type RenderBlock = (args: {
   uid: string;
   el: HTMLElement;
@@ -77,32 +82,66 @@ const PinButton = ({
 
 const NativeBlock = ({
   uid,
+  pinKey,
   renderBlock,
   unmountBlock,
+  onRendered,
 }: {
   uid: string;
+  pinKey: string;
   renderBlock: RenderBlock;
   unmountBlock: UnmountBlock;
+  onRendered: (key: string) => void;
 }): React.ReactElement => {
   const ref = React.useRef<HTMLDivElement>(null);
+  const unmounting = React.useRef<Promise<unknown>>(Promise.resolve());
+  const [failed, setFailed] = React.useState(false);
+  const [attempt, setAttempt] = React.useState(0);
   React.useEffect(() => {
     const el = ref.current;
     if (!el) return;
     let disposed = false;
-    void renderBlock({ uid, el, "zoom-path?": true })
+    void unmounting.current
       .then(() => {
-        if (disposed) void unmountBlock({ el });
+        if (!disposed) return renderBlock({ uid, el, "zoom-path?": true });
+      })
+      .then(() => {
+        if (disposed) {
+          void unmountBlock({ el });
+          return;
+        }
+        onRendered(pinKey);
       })
       .catch((error: unknown) => {
-        if (!disposed)
+        if (!disposed) {
+          setFailed(true);
           console.error("Pinned Blocks failed to render a reference", error);
+        }
       });
     return (): void => {
       disposed = true;
-      void unmountBlock({ el });
+      unmounting.current = unmountBlock({ el });
     };
-  }, [uid, renderBlock, unmountBlock]);
-  return <div ref={ref} />;
+  }, [uid, pinKey, renderBlock, unmountBlock, onRendered, attempt]);
+  return (
+    <>
+      <div ref={ref} />
+      {failed && (
+        <div role="status">
+          Couldn’t load this pinned reference.
+          <Button
+            minimal
+            small
+            text="Retry"
+            onClick={(): void => {
+              setFailed(false);
+              setAttempt((previous) => previous + 1);
+            }}
+          />
+        </div>
+      )}
+    </>
+  );
 };
 
 export const createLinkedReferenceControls = ({
@@ -122,7 +161,8 @@ export const createLinkedReferenceControls = ({
   const panels = new Map<HTMLElement, MountedPanel>();
   const decorated = new Set<HTMLElement>();
   const targets = new WeakMap<HTMLElement, string>();
-  const resolvingTargets = new WeakSet<HTMLElement>();
+  const targetUrls = new WeakMap<HTMLElement, string>();
+  const resolvingTargets = new WeakMap<HTMLElement, { url: string }>();
   const pendingKeys = new Set<string>();
   let latestPins: ReferencePin[] = [];
   let inactive = false;
@@ -252,22 +292,29 @@ export const createLinkedReferenceControls = ({
           Boolean(entry),
         );
       const sidebarWindow = getSidebarWindow(list);
+      const isMainList =
+        Boolean(list.closest(".roam-article")) &&
+        !list.closest("#right-sidebar, .roam-right-sidebar-content");
+      const url = window.location.href;
+      const cachedTarget =
+        isMainList && targetUrls.get(list) !== url
+          ? undefined
+          : targets.get(list);
       const targetUid =
         rows[0]?.pin.targetUid ||
         sidebarWindow?.["page-uid"] ||
         sidebarWindow?.["block-uid"] ||
-        targets.get(list);
+        cachedTarget;
       if (!targetUid) {
         const getMainTarget =
           window.roamAlphaAPI?.ui.mainWindow?.getOpenPageOrBlockUid;
         if (
-          list.closest(".roam-article") &&
-          !list.closest("#right-sidebar, .roam-right-sidebar-content") &&
+          isMainList &&
           getMainTarget &&
-          !resolvingTargets.has(list)
+          resolvingTargets.get(list)?.url !== url
         ) {
-          resolvingTargets.add(list);
-          const url = window.location.href;
+          const request = { url };
+          resolvingTargets.set(list, request);
           void getMainTarget()
             .then((uid) => {
               if (
@@ -278,6 +325,7 @@ export const createLinkedReferenceControls = ({
               )
                 return;
               targets.set(list, uid);
+              targetUrls.set(list, url);
               sync(latestPins);
             })
             .catch((error: unknown) => {
@@ -287,11 +335,15 @@ export const createLinkedReferenceControls = ({
                   error,
                 );
             })
-            .finally(() => resolvingTargets.delete(list));
+            .finally(() => {
+              if (resolvingTargets.get(list) === request)
+                resolvingTargets.delete(list);
+            });
         }
         return;
       }
       targets.set(list, targetUid);
+      if (isMainList) targetUrls.set(list, url);
       const filters = getFilters(list, targetUid);
       const entries: PinnedEntry[] = pins
         .filter((pin) => pin.targetUid === targetUid)
@@ -311,9 +363,22 @@ export const createLinkedReferenceControls = ({
           const mount = document.createElement("div");
           mount.className = PANEL_CLASS;
           list.prepend(mount);
-          panel = { mount, signature: "" };
+          const mountedPanel: MountedPanel = {
+            mount,
+            signature: "",
+            renderedKeys: new Set(),
+            onRendered: (key): void => {
+              if (inactive || panels.get(list) !== mountedPanel) return;
+              mountedPanel.renderedKeys.add(key);
+              sync(latestPins);
+            },
+          };
+          panel = mountedPanel;
           panels.set(list, panel);
         }
+        panel.renderedKeys.forEach((key) => {
+          if (!shownKeys.has(key)) panel.renderedKeys.delete(key);
+        });
         const signature = JSON.stringify(
           entries.map((entry) => [
             entry,
@@ -343,6 +408,8 @@ export const createLinkedReferenceControls = ({
                     <div className="rm-reference-item">
                       <NativeBlock
                         uid={pin.blockUid}
+                        pinKey={getReferencePinKey(pin)}
+                        onRendered={panel.onRendered}
                         renderBlock={renderBlock}
                         unmountBlock={unmountBlock}
                       />
@@ -365,13 +432,15 @@ export const createLinkedReferenceControls = ({
           );
         }
       }
+      const renderedKeys = panels.get(list)?.renderedKeys;
+      const hasRenderedCopy = (pin: ReferencePin): boolean => {
+        const key = getReferencePinKey(pin);
+        return shownKeys.has(key) && Boolean(renderedKeys?.has(key));
+      };
       rows.forEach(({ row, pin }) => {
         activeRows.add(row);
         decorate(row, ROW_CLASS, activeDecorations);
-        row.classList.toggle(
-          DUPLICATE_CLASS,
-          shownKeys.has(getReferencePinKey(pin)),
-        );
+        row.classList.toggle(DUPLICATE_CLASS, hasRenderedCopy(pin));
         let control = controls.get(row);
         if (!control || !row.contains(control.mount)) {
           if (control) removeControl(row, control);
@@ -383,13 +452,14 @@ export const createLinkedReferenceControls = ({
         }
         const signature = JSON.stringify([
           pin,
+          shownKeys.has(getReferencePinKey(pin)),
           pendingKeys.has(getReferencePinKey(pin)),
         ]);
         if (control.signature !== signature) {
           control.signature = signature;
           ReactDOM.render(
             <PinButton
-              pinned={false}
+              pinned={shownKeys.has(getReferencePinKey(pin))}
               pending={pendingKeys.has(getReferencePinKey(pin))}
               onClick={(): void => {
                 void runToggle(pin);
@@ -411,10 +481,7 @@ export const createLinkedReferenceControls = ({
         const heading = group.querySelector<HTMLElement>(
           ":scope > .rm-title-arrow-wrapper",
         );
-        if (
-          heading &&
-          groupRows.every(({ pin }) => shownKeys.has(getReferencePinKey(pin)))
-        )
+        if (heading && groupRows.every(({ pin }) => hasRenderedCopy(pin)))
           decorate(heading, EMPTY_HEADING_CLASS, activeDecorations);
       });
     });
@@ -439,14 +506,15 @@ export const createLinkedReferenceControls = ({
   // Roam can change filters without changing any currently loaded result rows.
   const filterPoll = window.setInterval(() => {
     if (inactive || !latestPins.length) return;
-    const snapshot = JSON.stringify(
+    const snapshot = JSON.stringify([
+      window.location.href,
       Array.from(
         document.querySelectorAll<HTMLElement>(".rm-mentions"),
       ).flatMap((list) => {
         const targetUid = targets.get(list);
         return targetUid ? [[targetUid, getFilters(list, targetUid)]] : [];
       }),
-    );
+    ]);
     if (snapshot === filterSnapshot) return;
     filterSnapshot = snapshot;
     sync(latestPins);

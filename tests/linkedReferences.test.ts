@@ -15,7 +15,7 @@ const script = buildSync({
     } } };
     window.controls = createLinkedReferenceControls({
       readReference: pin => window.missingPins?.includes(pin.blockUid) ? null : ({ sourceTitle: 'Source page', titles: ['Source page', 'Tag'] }),
-      renderBlock: async ({uid,el}) => { if (window.holdRender) await new Promise(resolve => {window.finishRender = resolve}); el.innerHTML = '<div class="roam-block-container" data-block-uid="'+uid+'">Rendered '+uid+'</div>'; window.renders = (window.renders || 0) + 1; },
+      renderBlock: async ({uid,el}) => { if (window.failRender) throw new Error("Injected render failure"); if (window.holdRender) await new Promise(resolve => {window.finishRender = resolve}); el.innerHTML = '<div class="roam-block-container" data-block-uid="'+uid+'">Rendered '+uid+'</div>'; window.renders = (window.renders || 0) + 1; },
       unmountBlock: async ({el}) => {el.innerHTML = ''; window.unmounts = (window.unmounts || 0) + 1},
       togglePin: async pin => {window.clickedPin = pin; window.toggleCount = (window.toggleCount || 0) + 1; if(window.holdToggle) await new Promise(resolve => {window.finishToggle = resolve})}
     });`,
@@ -195,7 +195,7 @@ test("cleanup restores native layout and delayed renders cannot resurrect mounte
     `window.holdRender=true;window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])`,
   );
   await page.waitForFunction("Boolean(window.finishRender)");
-  await expect(page.getByTestId("row-target123-block1234")).toBeHidden();
+  await expect(page.getByTestId("row-target123-block1234")).toBeVisible();
   await page.evaluate("window.controls.cleanup();window.finishRender()");
   await expect(page.locator('[class*="roamjs-reference-pin"]')).toHaveCount(0);
   await expect(page.getByTestId("row-target123-block1234")).toBeVisible();
@@ -344,4 +344,96 @@ test("empty main reference lists resolve their target and ignore late results af
     `document.querySelector('.rm-ref-page-view').replaceChildren();window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:()=>new Promise(resolve=>{window.finishTarget=resolve})};window.controls.sync([{targetUid:'target123',blockUid:'block1234'}]);window.controls.cleanup();window.finishTarget('target123')`,
   );
   await expect(page.locator(".roamjs-reference-pin-panel")).toHaveCount(0);
+});
+
+test("reused empty main lists invalidate cached pins on navigation", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    '<div class="roam-article">' + section("target123") + "</div>",
+  );
+  await page.evaluate(
+    `window.pins=[{targetUid:'target123',blockUid:'block1234'},{targetUid:'target456',blockUid:'other1234'}];window.controls.sync(window.pins)`,
+  );
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toContainText("Rendered block1234");
+  await page.evaluate(
+    `document.querySelector('.rm-ref-page-view').replaceChildren();window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:async()=> 'target456'};window.location.hash='page/target456'`,
+  );
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toHaveCount(0);
+  await expect(
+    page.locator('[data-reference-pin-uid="other1234"]'),
+  ).toContainText("Rendered other1234");
+});
+
+test("navigation starts a fresh target lookup while a previous lookup is pending", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    '<div class="roam-article">' + section("target123") + "</div>",
+  );
+  await page.evaluate(
+    `document.querySelector('.rm-ref-page-view').replaceChildren();window.pins=[{targetUid:'target123',blockUid:'block1234'},{targetUid:'target456',blockUid:'other1234'}];window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:()=>new Promise(resolve=>{window.finishOldTarget=resolve})};window.controls.sync(window.pins);window.location.hash='page/target456';window.roamAlphaAPI.ui.mainWindow.getOpenPageOrBlockUid=async()=> 'target456';window.controls.sync(window.pins)`,
+  );
+  await expect(
+    page.locator('[data-reference-pin-uid="other1234"]'),
+  ).toContainText("Rendered other1234");
+  await page.evaluate(`window.finishOldTarget('target123')`);
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toHaveCount(0);
+  await expect(
+    page.locator('[data-reference-pin-uid="other1234"]'),
+  ).toBeVisible();
+});
+
+test("native rows and source headings stay usable until pinned rendering succeeds", async ({
+  page,
+}) => {
+  await setup(page, section("target123"));
+  await page.evaluate(
+    `window.holdRender=true;window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])`,
+  );
+  await page.waitForFunction("Boolean(window.finishRender)");
+  const row = page.getByTestId("row-target123-block1234");
+  const heading = page.locator(".rm-title-arrow-wrapper");
+  await expect(row).toBeVisible();
+  await expect(heading).toBeVisible();
+  await expect(row.getByRole("button")).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate("window.finishRender()");
+  await expect(row).toBeHidden();
+  await expect(heading).toBeHidden();
+});
+
+test("renderer failures preserve the native row and retry restores one visible copy", async ({
+  page,
+}) => {
+  await setup(page, section("target123"));
+  await page.evaluate(
+    `window.failRender=true;window.pins=[{targetUid:'target123',blockUid:'block1234'}];window.controls.sync(window.pins)`,
+  );
+  const row = page.getByTestId("row-target123-block1234");
+  const pinned = page.locator('[data-reference-pin-uid="block1234"]');
+  await expect(pinned.getByRole("status")).toContainText("Couldn’t load");
+  await expect(row).toBeVisible();
+  await expect(page.locator(".rm-title-arrow-wrapper")).toBeVisible();
+  await row.getByRole("button", { name: "Unpin linked reference" }).click();
+  expect(await page.evaluate("window.clickedPin")).toEqual({
+    targetUid: "target123",
+    blockUid: "block1234",
+  });
+  await page.evaluate(`window.failRender=false`);
+  await pinned.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(pinned).toContainText("Rendered block1234");
+  await expect(pinned.getByRole("status")).toHaveCount(0);
+  await expect(row).toBeHidden();
+  await page.evaluate("window.controls.sync(window.pins)");
+  expect(await page.evaluate("window.renders")).toBe(1);
+  await page.evaluate("window.controls.sync([])");
+  await expect(row).toBeVisible();
 });

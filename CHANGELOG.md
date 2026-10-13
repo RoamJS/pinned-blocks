@@ -2,6 +2,9 @@
 
 ## 1.0.0
 
+- Hid inactive linked reference pin buttons until hover or keyboard focus, while keeping active pins visible.
+- Fixed saved pins appearing when the main linked reference groups are initially collapsed.
+
 - Fixed pinned reference copies respecting independent right-sidebar filters.
 
 - Rendered saved linked reference pins immediately before Roam lazy-loads their normal rows, hiding duplicate rows until unpinned.

@@ -25,7 +25,7 @@
 
 ## Linked reference pins
 
-Use the pin button beside a linked reference to keep it at the top of that
+Hover over a linked reference or focus it with the keyboard to reveal its pin button. Active pins stay visible. Use the pin button beside a linked reference to keep it at the top of that
 page's linked reference results. Click the active pin button to unpin it.
 Pinned results appear under a “Pinned references” heading, show the full source
 page title, and retain Roam's native block controls. Pinned results follow the order in which their pins are saved. The pin button shows a loading state while saving.

@@ -229,6 +229,7 @@ export default {
         ),
       picked.sourceUid,
     );
+    await row.hover();
     await row
       .getByRole("button", { name: "Pin linked reference", exact: true })
       .click();
@@ -439,6 +440,7 @@ export default {
     await page.screenshot({
       path: path.join(outDir, "05-unpinned-native-row-restored.png"),
     });
+    await row.hover();
     await row
       .getByRole("button", { name: "Pin linked reference", exact: true })
       .click();

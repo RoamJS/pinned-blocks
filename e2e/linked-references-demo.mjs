@@ -3,11 +3,14 @@ import path from "node:path";
 let fixture;
 const ownedPages = new Set();
 let previousMainUid;
-const pinButton = (page, uid) =>
+const referenceRow = (page, uid) =>
   page
     .locator(`.rm-reference-item:has([data-block-uid="${uid}"])`)
-    .locator("..")
-    .getByRole("button", { name: /^(Unpin|Pin) linked reference$/ });
+    .locator("..");
+const pinButton = (page, uid) =>
+  referenceRow(page, uid).getByRole("button", {
+    name: /^(Unpin|Pin) linked reference$/,
+  });
 const pause = (page) => page.waitForTimeout(2200);
 const waitForTarget = (page, targetUid) =>
   page.waitForFunction(
@@ -132,7 +135,7 @@ export default {
     const start = await page.evaluate(() => window.beginDemoCapture());
     await page.screenshot({ path: path.join(outDir, "01-before-pinning.png") });
     await pause(page);
-    await pinButton(page, first).hover();
+    await referenceRow(page, first).hover();
     await page.waitForTimeout(900);
     await pinButton(page, first).click();
     await page.waitForFunction(
@@ -156,7 +159,7 @@ export default {
     await page.mouse.move(1150, 160);
     await pause(page);
     await page.screenshot({ path: path.join(outDir, "02-one-pinned.png") });
-    await pinButton(page, second).hover();
+    await referenceRow(page, second).hover();
     await page.waitForTimeout(900);
     await pinButton(page, second).click();
     await page.waitForFunction(
@@ -219,7 +222,7 @@ export default {
     );
     await waitForTarget(page, fixture.dailyUid);
     await pinButton(page, first).waitFor();
-    await pinButton(page, first).hover();
+    await referenceRow(page, first).hover();
     await page.waitForTimeout(900);
     await pinButton(page, first).click();
     await page.waitForFunction(

@@ -145,6 +145,7 @@ test("daily note pins prevent duplicate saves, and stable syncs do not remount n
 }) => {
   await setup(page, section("10-12-2026"));
   await page.evaluate("window.holdToggle=true;window.controls.sync([])");
+  await page.getByTestId("row-10-12-2026-block1234").hover();
   await page
     .getByRole("button", { name: "Pin linked reference", exact: true })
     .click();
@@ -270,4 +271,77 @@ test("a recreated empty sidebar reference list restores pins from its window ide
   await expect(
     page.locator('[data-reference-pin-uid="block1234"]'),
   ).toBeVisible();
+});
+
+test("inactive pins reveal on row hover and keyboard focus without moving content", async ({
+  page,
+}) => {
+  await setup(page, section("target123", "2 Linked References", "other1234"));
+  await page.evaluate(
+    `window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])`,
+  );
+  const row = page.getByTestId("row-target123-other1234");
+  const button = row.getByRole("button");
+  const pinned = page.getByRole("button", { name: "Unpin linked reference" });
+  await page.mouse.move(0, 0);
+  await expect(button).toHaveCSS("opacity", "0");
+  await expect(button).toHaveCSS("pointer-events", "none");
+  await expect(pinned).toHaveCSS("opacity", "1");
+  const before = await row.locator(".rm-reference-item").boundingBox();
+  await row.locator(".roam-block").hover();
+  await expect(button).toHaveCSS("opacity", "1");
+  await expect(button).toHaveCSS("pointer-events", "auto");
+  expect(await row.locator(".rm-reference-item").boundingBox()).toEqual(before);
+  await page.mouse.move(0, 0);
+  await expect(button).toHaveCSS("opacity", "0");
+  await pinned.focus();
+  await page.keyboard.press("Tab");
+  await expect(button).toBeFocused();
+  await expect(button).toHaveCSS("opacity", "1");
+  await button.press("Enter");
+  expect(await page.evaluate("window.clickedPin")).toEqual({
+    targetUid: "target123",
+    blockUid: "other1234",
+  });
+});
+
+test("pending saves remain visible after pointer and focus leave", async ({
+  page,
+}) => {
+  await setup(page, section("target123"));
+  await page.evaluate("window.holdToggle=true;window.controls.sync([])");
+  const row = page.getByTestId("row-target123-block1234");
+  const button = row.getByRole("button");
+  await row.hover();
+  await button.click();
+  await page.mouse.move(0, 0);
+  await button.evaluate((el) => el.blur());
+  await expect(button).toHaveCSS("opacity", "1");
+  await expect(button).toHaveAttribute("aria-busy", "true");
+  await page.evaluate("window.finishToggle()");
+  await expect(button).toHaveCSS("opacity", "0");
+});
+
+test("empty main reference lists resolve their target and ignore late results after cleanup", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    '<div class="roam-article">' + section("target123") + "</div>",
+  );
+  await page.evaluate(
+    `document.querySelector('.rm-ref-page-view').replaceChildren();window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:async()=> 'target123'};window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])`,
+  );
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toBeVisible();
+  await page.evaluate(`window.controls.cleanup()`);
+  await setup(
+    page,
+    '<div class="roam-article">' + section("target123") + "</div>",
+  );
+  await page.evaluate(
+    `document.querySelector('.rm-ref-page-view').replaceChildren();window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:()=>new Promise(resolve=>{window.finishTarget=resolve})};window.controls.sync([{targetUid:'target123',blockUid:'block1234'}]);window.controls.cleanup();window.finishTarget('target123')`,
+  );
+  await expect(page.locator(".roamjs-reference-pin-panel")).toHaveCount(0);
 });

@@ -18,6 +18,9 @@ export const LINKED_REFERENCE_STYLES = `
   .roamjs-reference-pin-row > .rm-reference-item { grid-column: 1; width: auto; min-width: 0; }
   .roamjs-reference-pin-control { display: contents; }
   .roamjs-reference-pin-control > button { grid-column: 2; }
+  .roamjs-reference-pin-control > button[aria-pressed="false"][aria-busy="false"] { opacity: 0; pointer-events: none; }
+  .roamjs-reference-pin-row:hover > .roamjs-reference-pin-control > button,
+  .roamjs-reference-pin-row:focus-within > .roamjs-reference-pin-control > button { opacity: 1; pointer-events: auto; }
   .roamjs-reference-pin-source { padding: 4px 8px; font-size: 12px; opacity: 0.8; overflow-wrap: anywhere; }
   .roamjs-reference-pin-heading { padding: 8px 12px; font-size: 12px; font-weight: 600; }
   .roamjs-reference-pin-active { margin: 0 4px 8px 12px; }
@@ -119,6 +122,7 @@ export const createLinkedReferenceControls = ({
   const panels = new Map<HTMLElement, MountedPanel>();
   const decorated = new Set<HTMLElement>();
   const targets = new WeakMap<HTMLElement, string>();
+  const resolvingTargets = new WeakSet<HTMLElement>();
   const pendingKeys = new Set<string>();
   let latestPins: ReferencePin[] = [];
   let inactive = false;
@@ -253,7 +257,40 @@ export const createLinkedReferenceControls = ({
         sidebarWindow?.["page-uid"] ||
         sidebarWindow?.["block-uid"] ||
         targets.get(list);
-      if (!targetUid) return;
+      if (!targetUid) {
+        const getMainTarget =
+          window.roamAlphaAPI?.ui.mainWindow?.getOpenPageOrBlockUid;
+        if (
+          list.closest(".roam-article") &&
+          !list.closest("#right-sidebar, .roam-right-sidebar-content") &&
+          getMainTarget &&
+          !resolvingTargets.has(list)
+        ) {
+          resolvingTargets.add(list);
+          const url = window.location.href;
+          void getMainTarget()
+            .then((uid) => {
+              if (
+                inactive ||
+                !list.isConnected ||
+                window.location.href !== url ||
+                !uid
+              )
+                return;
+              targets.set(list, uid);
+              sync(latestPins);
+            })
+            .catch((error: unknown) => {
+              if (!inactive)
+                console.error(
+                  "Pinned Blocks failed to resolve a reference target",
+                  error,
+                );
+            })
+            .finally(() => resolvingTargets.delete(list));
+        }
+        return;
+      }
       targets.set(list, targetUid);
       const filters = getFilters(list, targetUid);
       const entries: PinnedEntry[] = pins

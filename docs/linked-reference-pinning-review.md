@@ -24,3 +24,7 @@ Native DOM order and Tab navigation continue to follow Roam's grouping. Pin cont
 The recapture verifies multiple pins from different source groups, independent target pages, source outline preservation, stable row width and horizontal alignment, a daily note target, and a narrower layout. Unit and browser tests cover pending toggles, daily note record persistence, layout, target reuse, and cleanup after an in-flight toggle.
 
 Complete reviewer logs and versioned original/updated media remain in ignored local output directories. This review does not approve production publication or establish a normal-speed human playback review.
+
+## Lazy-loading follow-up
+
+The October 13 implementation replaces display reordering with a dedicated pinned section using Roam’s native editable block renderer. Saved pins render before their ordinary results are lazy-loaded; loaded duplicate rows are hidden and restored on unpin. The pinned section follows shared pin-record order, and Tab reaches it before the ordinary reference controls. This supersedes the ordering and Tab notes from the original Fable review above. The new behavior is covered by a 120-reference live regression and automated tests; the original Fable review applies to the earlier capture.

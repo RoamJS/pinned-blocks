@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Rendered saved linked reference pins immediately before Roam lazy-loads their normal rows, hiding duplicate rows until unpinned.
+
 - Kept linked reference widths and alignment stable while pinning, with full source titles, a pinned heading, and pending button states.
 - Added linked reference pins for daily note pages and arrow-key navigation between pin controls.
 

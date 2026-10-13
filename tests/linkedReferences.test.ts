@@ -4,12 +4,21 @@ import { buildSync } from "esbuild";
 test.use({
   launchOptions: { executablePath: process.env.ROAM_BROWSER_EXECUTABLE_PATH },
 });
-
 const script = buildSync({
   stdin: {
     contents: `import { createLinkedReferenceControls, LINKED_REFERENCE_STYLES } from "./src/linkedReferences";
-      window.referencePinStyles = LINKED_REFERENCE_STYLES;
-      window.controls = createLinkedReferenceControls({ togglePin: async (pin) => { window.clickedPin = pin; window.toggleCount = (window.toggleCount || 0) + 1; if (window.holdToggle) await new Promise(resolve => { window.finishToggle = resolve; }); } });`,
+    window.referencePinStyles = LINKED_REFERENCE_STYLES;
+    window.filters = {};
+    window.roamAlphaAPI = { ui: { filters: {
+      getGlobalFilters: () => ({}), getPageLinkedRefsFilters: () => window.filters,
+      getSidebarWindowFilters: () => window.filters
+    } } };
+    window.controls = createLinkedReferenceControls({
+      readReference: pin => window.missingPins?.includes(pin.blockUid) ? null : ({ sourceTitle: 'Source page', titles: ['Source page', 'Tag'] }),
+      renderBlock: async ({uid,el}) => { if (window.holdRender) await new Promise(resolve => {window.finishRender = resolve}); el.innerHTML = '<div class="roam-block-container" data-block-uid="'+uid+'">Rendered '+uid+'</div>'; window.renders = (window.renders || 0) + 1; },
+      unmountBlock: async ({el}) => {el.innerHTML = ''; window.unmounts = (window.unmounts || 0) + 1},
+      togglePin: async pin => {window.clickedPin = pin; window.toggleCount = (window.toggleCount || 0) + 1; if(window.holdToggle) await new Promise(resolve => {window.finishToggle = resolve})}
+    });`,
     resolveDir: process.cwd(),
     loader: "tsx",
   },
@@ -17,173 +26,178 @@ const script = buildSync({
   write: false,
   format: "iife",
 }).outputFiles[0].text;
+const section = (
+  target: string,
+  label = "1 Linked Reference",
+  uid = "block1234",
+): string => `
+<div class="rm-reference-container"><div class="flex-h-box"><strong>${label}</strong></div>
+<div class="rm-mentions"><div class="rm-ref-page-view"><div class="rm-title-arrow-wrapper">Source page</div>
+<div><div class="flex-h-box" data-testid="row-${target}-${uid}"><div class="rm-reference-item">
+<div class="roam-block-container" data-block-uid="${uid}" data-page-title="Source page"><div class="rm-block-main">
+<div class="roam-block" id="block-input-user-mentions-page-${target}-${uid}">Native ${uid}</div>
+</div></div></div></div></div></div></div></div>`;
+const setup = async (
+  page: import("@playwright/test").Page,
+  content: string,
+): Promise<void> => {
+  await page.setContent(content);
+  await page.addScriptTag({ content: script });
+  await page.addStyleTag({
+    content: await page.evaluate("window.referencePinStyles"),
+  });
+};
 
-const referenceSection = (label: string, targetUid: string): string => `
-<div class="rm-reference-container">
-  <div class="flex-h-box"><strong>${label}</strong></div>
-  <div class="rm-mentions"><div class="rm-ref-page-view">
-    <div class="rm-title-arrow-wrapper">Source page</div>
-    <div><div class="flex-h-box" data-testid="row-${targetUid}">
-      <div class="rm-reference-item"><div class="roam-block-container" data-block-uid="block1234" data-page-title="Source page">
-        <div class="rm-block-main"><div class="roam-block" id="block-input-user-mentions-page-${targetUid}-block1234">Reference</div></div>
-      </div></div>
-    </div></div>
-  </div></div>
-</div>`;
-
-test("controls scope pins to the target, skip unlinked results, and restore native layout on unpin", async ({
+test("pins render before lazy rows arrive, hide duplicates, and reveal native rows on unpin", async ({
   page,
 }) => {
-  await page.setContent(
-    referenceSection("1 Linked Reference", "target123") +
-      referenceSection("1 Linked Reference", "target456") +
-      referenceSection("1 Unlinked Reference", "target789"),
-  );
-  await page.addScriptTag({ content: script });
+  await setup(page, section("target123", "2 Linked References", "other1234"));
   await page.evaluate(
-    `window.controls.sync([{ targetUid: "target123", blockUid: "block1234" }])`,
+    `window.controls.sync([{targetUid:'target123', blockUid:'block1234'}])`,
   );
-  const first = page.getByTestId("row-target123");
-  const second = page.getByTestId("row-target456");
+  const pinned = page.locator('[data-reference-pin-uid="block1234"]');
+  await expect(pinned).toContainText("Rendered block1234");
   await expect(
-    first.getByRole("button", { name: "Unpin linked reference" }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    second.getByRole("button", { name: "Pin linked reference", exact: true }),
-  ).toHaveAttribute("aria-pressed", "false");
-  await expect(
-    page.getByTestId("row-target789").getByRole("button"),
-  ).toHaveCount(0);
-  await expect(page.locator(".roamjs-reference-pin-list")).toHaveCount(1);
-  await first.getByRole("button").click();
-  expect(await page.evaluate(`window.clickedPin`)).toEqual({
+    page.getByRole("heading", { name: "Pinned references (1)" }),
+  ).toBeVisible();
+  await page
+    .locator(".rm-ref-page-view > div:last-child")
+    .evaluate(
+      (el, html) => el.insertAdjacentHTML("beforeend", html),
+      section("target123").match(
+        /<div class="flex-h-box" data-testid[\s\S]+(?=<\/div><\/div><\/div><\/div>$)/,
+      )![0],
+    );
+  await page.evaluate(
+    `window.controls.sync([{targetUid:'target123', blockUid:'block1234'}])`,
+  );
+  await expect(page.getByTestId("row-target123-block1234")).toBeHidden();
+  await expect(pinned).toBeVisible();
+  await pinned.getByRole("button").click();
+  expect(await page.evaluate("window.clickedPin")).toEqual({
     targetUid: "target123",
     blockUid: "block1234",
   });
-  await page.evaluate(`window.controls.sync([])`);
+  await page.evaluate("window.controls.sync([])");
+  await expect(pinned).toHaveCount(0);
+  await expect(page.getByTestId("row-target123-block1234")).toBeVisible();
+});
+
+test("pins remain target-scoped and unlinked results receive no controls", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    section("target123") +
+      section("target456") +
+      section("target789", "1 Unlinked Reference"),
+  );
+  await page.evaluate(
+    `window.controls.sync([{targetUid:'target123', blockUid:'block1234'}])`,
+  );
   await expect(
-    page.locator(
-      ".roamjs-reference-pin-list, .roamjs-reference-pin-group, .roamjs-reference-pin-active",
-    ),
+    page.getByRole("button", { name: "Unpin linked reference" }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByTestId("row-target456-block1234").getByRole("button"),
+  ).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    page.getByTestId("row-target789-block1234").getByRole("button"),
+  ).toHaveCount(0);
+  await page
+    .locator("#block-input-user-mentions-page-target123-block1234")
+    .evaluate(
+      (el) => (el.id = "block-input-user-mentions-page-target987-block1234"),
+    );
+  await page.evaluate(
+    `window.controls.sync([{targetUid:'target123', blockUid:'block1234'}])`,
+  );
+  await expect(
+    page.getByRole("button", { name: "Unpin linked reference" }),
   ).toHaveCount(0);
 });
 
-test("reused result rows receive fresh target context and cleanup removes all mounted controls", async ({
+test("filters and missing references suppress top copies without losing saved pins", async ({
   page,
 }) => {
-  await page.setContent(referenceSection("1 Linked Reference", "target123"));
-  await page.addScriptTag({ content: script });
+  await setup(page, section("target123"));
   await page.evaluate(
-    `window.controls.sync([{ targetUid: "target123", blockUid: "block1234" }])`,
+    `window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])`,
   );
-  await page.locator(".roam-block").evaluate((element) => {
-    element.id = "block-input-user-mentions-page-target456-block1234";
-  });
+  await expect(page.locator(".roamjs-reference-pin-panel")).toBeVisible();
   await page.evaluate(
-    `window.controls.sync([{ targetUid: "target123", blockUid: "block1234" }])`,
+    `window.filters={removes:['Tag']};window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])`,
   );
+  await expect(page.locator(".roamjs-reference-pin-panel")).toHaveCount(0);
+  await expect(page.getByTestId("row-target123-block1234")).toBeVisible();
+  await page.evaluate(
+    `window.filters={includes:['Tag']};window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])`,
+  );
+  await expect(page.locator(".roamjs-reference-pin-panel")).toBeVisible();
+  await page.evaluate(
+    `window.missingPins=['block1234'];window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])`,
+  );
+  await expect(page.locator(".roamjs-reference-pin-panel")).toHaveCount(0);
+});
+
+test("daily note pins prevent duplicate saves, and stable syncs do not remount native blocks", async ({
+  page,
+}) => {
+  await setup(page, section("10-12-2026"));
+  await page.evaluate("window.holdToggle=true;window.controls.sync([])");
   await page
     .getByRole("button", { name: "Pin linked reference", exact: true })
     .click();
-  expect(await page.evaluate(`window.clickedPin`)).toEqual({
-    targetUid: "target456",
-    blockUid: "block1234",
-  });
-  await page.evaluate(`window.controls.cleanup()`);
-  await expect(page.getByRole("button")).toHaveCount(0);
-  await expect(page.locator('[class*="roamjs-reference-pin"]')).toHaveCount(0);
-  await expect(page.locator(".rm-reference-item")).toHaveCount(1);
-});
-
-test("daily notes get independent controls and record pending changes only once", async ({
-  page,
-}) => {
-  await page.setContent(referenceSection("1 Linked Reference", "10-12-2026"));
-  await page.addScriptTag({ content: script });
-  await page.evaluate(`window.holdToggle = true; window.controls.sync([])`);
-  const button = page.getByRole("button", {
-    name: "Pin linked reference",
-    exact: true,
-  });
-  await button.click();
-  await expect(button).toBeDisabled();
-  await page.evaluate(`document.querySelector("button").click()`);
-  expect(await page.evaluate(`window.toggleCount`)).toBe(1);
-  expect(await page.evaluate(`window.clickedPin`)).toEqual({
-    targetUid: "10-12-2026",
-    blockUid: "block1234",
-  });
+  await expect(page.getByRole("button")).toBeDisabled();
+  await page.evaluate("document.querySelector('button').click()");
+  expect(await page.evaluate("window.toggleCount")).toBe(1);
   await page.evaluate(
-    `window.controls.sync([{ targetUid: "10-12-2026", blockUid: "block1234" }]); window.finishToggle()`,
+    `window.controls.sync([{targetUid:'10-12-2026',blockUid:'block1234'}]);window.finishToggle()`,
   );
   await expect(
     page.getByRole("button", { name: "Unpin linked reference" }),
   ).toBeEnabled();
-  await expect(
-    page.getByRole("heading", { name: "Pinned references (1)" }),
-  ).toHaveCount(1);
+  const renders = await page.evaluate("window.renders");
+  await page.evaluate(
+    `window.controls.sync([{targetUid:'10-12-2026',blockUid:'block1234'}])`,
+  );
+  expect(await page.evaluate("window.renders")).toBe(renders);
 });
 
-test("source captions preserve row widths and cleanup cannot be undone by a pending toggle", async ({
+test("arrow keys skip hidden duplicates and follow the visible pins", async ({
   page,
 }) => {
-  await page.setContent(
-    `<style>.rm-mentions{width:700px}.flex-h-box{display:flex}.rm-reference-item{flex:1}.rm-ref-page-view{margin-left:3px;border-left:1px solid transparent}.rm-ref-page-view>div:not(.rm-title-arrow-wrapper){margin-left:4px}</style>` +
-      referenceSection("1 Linked Reference", "target123"),
-  );
-  await page.addScriptTag({ content: script });
-  await page.addStyleTag({
-    content: await page.evaluate(`window.referencePinStyles`),
-  });
-  await page.evaluate(`window.controls.sync([])`);
-  const before = await page.locator(".rm-reference-item").boundingBox();
+  await setup(page, section("target123", "2 Linked References", "other1234"));
   await page.evaluate(
-    `window.controls.sync([{ targetUid: "target123", blockUid: "block1234" }])`,
-  );
-  const after = await page.locator(".rm-reference-item").boundingBox();
-  expect(after?.width).toBe(before?.width);
-  await expect(page.locator(".roamjs-reference-pin-source")).toHaveText(
-    "Source page",
-  );
-  await expect(page.locator(".rm-title-arrow-wrapper")).toBeHidden();
-  await page.evaluate(`window.holdToggle = true`);
-  await page.getByRole("button").click();
-  await page.evaluate(`window.controls.cleanup(); window.finishToggle()`);
-  await expect(page.getByRole("button")).toHaveCount(0);
-  await expect(page.locator('[class*="roamjs-reference-pin"]')).toHaveCount(0);
-});
-
-test("arrow keys follow displayed pin order and Enter activates a pin", async ({
-  page,
-}) => {
-  await page.setContent(referenceSection("2 Linked References", "target123"));
-  await page.locator('[data-testid="row-target123"]').evaluate((row) => {
-    const second = row.cloneNode(true) as HTMLElement;
-    second.dataset.testid = "second-row";
-    second.querySelector<HTMLElement>("[data-block-uid]")!.dataset.blockUid =
-      "block5678";
-    second.querySelector<HTMLElement>(".roam-block")!.id =
-      "block-input-user-mentions-page-target123-block5678";
-    row.parentElement!.appendChild(second);
-  });
-  await page.addScriptTag({ content: script });
-  await page.addStyleTag({
-    content: await page.evaluate(`window.referencePinStyles`),
-  });
-  await page.evaluate(
-    `window.controls.sync([{ targetUid: "target123", blockUid: "block5678" }])`,
+    `window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])`,
   );
   const pinned = page.getByRole("button", { name: "Unpin linked reference" });
-  const unpinned = page.getByRole("button", {
+  const native = page.getByRole("button", {
     name: "Pin linked reference",
     exact: true,
   });
   await pinned.focus();
   await pinned.press("ArrowDown");
-  await expect(unpinned).toBeFocused();
-  await unpinned.press("Enter");
-  expect(await page.evaluate(`window.clickedPin`)).toEqual({
+  await expect(native).toBeFocused();
+  await native.press("Enter");
+  expect(await page.evaluate("window.clickedPin")).toEqual({
     targetUid: "target123",
-    blockUid: "block1234",
+    blockUid: "other1234",
   });
+});
+
+test("cleanup restores native layout and delayed renders cannot resurrect mounted UI", async ({
+  page,
+}) => {
+  await setup(page, section("target123"));
+  await page.evaluate(
+    `window.holdRender=true;window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])`,
+  );
+  await page.waitForFunction("Boolean(window.finishRender)");
+  await expect(page.getByTestId("row-target123-block1234")).toBeHidden();
+  await page.evaluate("window.controls.cleanup();window.finishRender()");
+  await expect(page.locator('[class*="roamjs-reference-pin"]')).toHaveCount(0);
+  await expect(page.getByTestId("row-target123-block1234")).toBeVisible();
+  await expect(page.locator(".rm-reference-item")).toHaveCount(1);
+  expect(await page.evaluate("window.unmounts")).toBeGreaterThan(0);
 });

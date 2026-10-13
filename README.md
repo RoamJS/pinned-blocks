@@ -28,20 +28,15 @@
 Use the pin button beside a linked reference to keep it at the top of that
 page's linked reference results. Click the active pin button to unpin it.
 Pinned results appear under a “Pinned references” heading, show the full source
-page title, and retain Roam's native block controls. Pinned results keep their
-relative order from Roam's current reference sorting rather than the order in
-which you pin them. The pin button shows a loading state while saving.
+page title, and retain Roam's native block controls. Pinned results follow the order in which their pins are saved. The pin button shows a loading state while saving.
 
 Daily note pages are supported. Use the Up and Down arrow keys on a pin button
-to move between the pin controls in their displayed order. Native Tab navigation
-still follows Roam's underlying reference grouping.
+to move between the pin controls in their displayed order. Tab visits the pinned section first, then the remaining native reference controls.
 
 Reference pins are saved separately for each target page or block under
 `roam/js/pinned-blocks` and shared with collaborators running the extension.
 They change the displayed reference order without changing source block order.
-Roam's filters still apply; a pinned reference appears only when it is included
-in the rendered results. Pins do not force collapsed source groups to expand
-or load additional results.
+Saved reference pins render immediately at the top, including references Roam has not lazy-loaded yet. When Roam loads the original row, the extension hides that duplicate. Unpinning removes the top copy and restores the original row. Roam's include/remove filters still apply to pinned copies. Deleted blocks and blocks that no longer reference the target are not shown.
 
 ## Multiplayer graphs
 

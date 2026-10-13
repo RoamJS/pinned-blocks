@@ -23,18 +23,28 @@ const {
     ),
   ).href
 );
+const expectMainPin = async (page, uid) => {
+  assert(
+    await page
+      .locator(`.roam-article [data-reference-pin-uid="${uid}"]`)
+      .isVisible(),
+    "Sidebar filter must not hide the main pin",
+  );
+};
 const ownedPages = new Set();
 let fixture;
 let picked;
 let completed = false;
 const collect = async (page) =>
   page.evaluate(() => ({
-    rendered: Array.from(document.querySelectorAll(".rm-reference-item"))
+    rendered: Array.from(
+      document.querySelectorAll(".roam-article .rm-reference-item"),
+    )
       .filter((item) => !item.closest(".roamjs-reference-pin-panel"))
       .map((item) => item.querySelector("[data-block-uid]")?.dataset.blockUid)
       .filter(Boolean),
     headings: Array.from(
-      document.querySelectorAll(".rm-reference-container strong"),
+      document.querySelectorAll(".roam-article .rm-reference-container strong"),
     ).map((el) => el.textContent),
     moreControls: Array.from(
       document.querySelectorAll(
@@ -50,9 +60,11 @@ const collect = async (page) =>
         /more|load|next/i.test([x.text, x.title, x.label].join(" ")),
       ),
     pinned: Array.from(
-      document.querySelectorAll(".roamjs-reference-pin-active"),
+      document.querySelectorAll(".roam-article .roamjs-reference-pin-active"),
     ).map((row) => row.querySelector("[data-block-uid]")?.dataset.blockUid),
-    tail: document.querySelector(".rm-mentions")?.textContent?.slice(-1400),
+    tail: document
+      .querySelector(".roam-article .rm-mentions")
+      ?.textContent?.slice(-1400),
   }));
 const stored = async (page, target, uid, backend = false) =>
   page.evaluate(
@@ -117,7 +129,13 @@ export default {
     await page.exposeFunction("registerLazyFixturePage", (uid) =>
       ownedPages.add(uid),
     );
-    fixture = await page.evaluate(async () => {
+    const sourcePageCount = Number(process.env.ROAMJS_LAZY_SOURCE_PAGES || 24);
+    assert(
+      Number.isInteger(sourcePageCount) &&
+        sourcePageCount >= 1 &&
+        sourcePageCount <= 24,
+    );
+    fixture = await page.evaluate(async (sourcePageCount) => {
       const api = window.roamAlphaAPI;
       if (api.graph.name !== "jarvis-sandbox")
         throw new Error("Restricted to test graph");
@@ -132,7 +150,7 @@ export default {
       await window.registerLazyFixturePage(other);
       const blocks = [],
         sources = [];
-      for (let i = 0; i < 24; i++) {
+      for (let i = 0; i < sourcePageCount; i++) {
         const uid = api.util.generateUID();
         sources.push(uid);
         await api.data.page.create({
@@ -156,8 +174,8 @@ export default {
       }
       await api.ui.mainWindow.openPage({ page: { uid: target } });
       return { target, other, title, sources, blocks };
-    });
-    await page.locator(".rm-reference-item").first().waitFor();
+    }, sourcePageCount);
+    await page.locator(".roam-article .rm-reference-item").first().waitFor();
     await page.waitForTimeout(1200);
     const initial = await collect(page);
     console.log("INITIAL " + JSON.stringify(initial));
@@ -165,68 +183,6 @@ export default {
     const initialSet = new Set(initial.rendered);
     const absent = fixture.blocks.filter((b) => !initialSet.has(b.uid));
     if (!absent.length) {
-      assert(
-        await row.isHidden(),
-        "Lazy-loaded native duplicate must be hidden",
-      );
-      const visibleCopies = await page
-        .locator(`[data-block-uid="${picked.uid}"]`)
-        .evaluateAll(
-          (nodes) => nodes.filter((el) => el.getClientRects().length).length,
-        );
-      assert.equal(visibleCopies, 1, "Exactly one copy should be visible");
-      const sourceTitle = await page.evaluate(
-        (uid) =>
-          window.roamAlphaAPI.data.pull("[:node/title]", [":block/uid", uid])[
-            ":node/title"
-          ],
-        picked.sourceUid,
-      );
-      await page.evaluate(
-        async ({ target, title }) =>
-          window.roamAlphaAPI.ui.filters.setPageLinkedRefsFilters({
-            page: { uid: target },
-            filters: { removes: [title] },
-          }),
-        { target: fixture.target, title: sourceTitle },
-      );
-      await page.waitForFunction(
-        (uid) => !document.querySelector(`[data-reference-pin-uid="${uid}"]`),
-        picked.uid,
-      );
-      assert(
-        await stored(page, fixture.target, picked.uid),
-        "Filtering must not unpin",
-      );
-      await page.evaluate(
-        async (target) =>
-          window.roamAlphaAPI.ui.filters.setPageLinkedRefsFilters({
-            page: { uid: target },
-            filters: {},
-          }),
-        fixture.target,
-      );
-      await pinnedRow.waitFor();
-      await pinnedRow
-        .getByRole("button", { name: "Unpin linked reference", exact: true })
-        .click();
-      await pinnedRow.waitFor({ state: "detached" });
-      await row.waitFor({ state: "visible" });
-      assert(!(await stored(page, fixture.target, picked.uid)));
-      await page.screenshot({
-        path: path.join(outDir, "05-unpinned-native-row-restored.png"),
-      });
-      await row
-        .getByRole("button", { name: "Pin linked reference", exact: true })
-        .click();
-      await pinnedRow.waitFor();
-      await page
-        .getByRole("heading", { name: /Pinned references/ })
-        .scrollIntoViewIfNeeded();
-      await page.screenshot({
-        path: path.join(outDir, "06-final-immediate-pins.png"),
-      });
-      await waitStored(page, fixture.target, picked.uid, true);
       const report = {
         status: "lazy-loading-not-triggered",
         total: fixture.blocks.length,
@@ -259,7 +215,7 @@ export default {
     );
     const row = page
       .locator(
-        `.rm-ref-page-view .rm-reference-item:has([data-block-uid="${picked.uid}"])`,
+        `.roam-article .rm-ref-page-view .rm-reference-item:has([data-block-uid="${picked.uid}"])`,
       )
       .locator("..");
     await row
@@ -294,6 +250,7 @@ export default {
     );
     assert.deepEqual(orderAfter, orderBefore);
     await page
+      .locator(".roam-article")
       .getByRole("heading", { name: /Pinned references/ })
       .scrollIntoViewIfNeeded();
     await page.screenshot({
@@ -327,7 +284,7 @@ export default {
     await page.waitForFunction(() =>
       Boolean(document.getElementById("roamjs-pinned-blocks-style")),
     );
-    await page.locator(".rm-reference-item").first().waitFor();
+    await page.locator(".roam-article .rm-reference-item").first().waitFor();
     await page.waitForTimeout(1000);
     const reopened = await collect(page);
     assert(
@@ -377,16 +334,21 @@ export default {
       picked.uid,
     );
     await page
+      .locator(".roam-article")
       .getByRole("heading", { name: /Pinned references/ })
       .scrollIntoViewIfNeeded();
     const restored = await collect(page);
     await page.screenshot({
       path: path.join(outDir, "04-pin-restored-after-loading.png"),
     });
-    const pinnedRow = page.locator(`[data-reference-pin-uid="${picked.uid}"]`);
+    const pinnedRow = page.locator(
+      `.roam-article [data-reference-pin-uid="${picked.uid}"]`,
+    );
     const y = await pinnedRow.boundingBox();
     const otherRows = await page
-      .locator(".roamjs-reference-pin-row:not(.roamjs-reference-pin-active)")
+      .locator(
+        ".roam-article .roamjs-reference-pin-row:not(.roamjs-reference-pin-active)",
+      )
       .evaluateAll((rows) =>
         rows
           .filter((el) => el.getClientRects().length)
@@ -432,6 +394,42 @@ export default {
       fixture.target,
     );
     await pinnedRow.waitFor();
+    await page.evaluate(async (target) => {
+      await window.roamAlphaAPI.ui.rightSidebar.addWindow({
+        window: { type: "mentions", "block-uid": target },
+      });
+      await window.roamAlphaAPI.ui.rightSidebar.open();
+    }, fixture.target);
+    const sidebarPin = page.locator(
+      `#right-sidebar [data-reference-pin-uid="${picked.uid}"], .roam-right-sidebar-content [data-reference-pin-uid="${picked.uid}"]`,
+    );
+    await sidebarPin.waitFor();
+    await page.evaluate(
+      async ({ target, title }) =>
+        window.roamAlphaAPI.ui.filters.setSidebarWindowFilters({
+          window: { type: "mentions", "block-uid": target },
+          filters: { removes: [title] },
+        }),
+      { target: fixture.target, title: sourceTitle },
+    );
+    await sidebarPin.waitFor({ state: "detached" });
+    await expectMainPin(page, picked.uid);
+    await page.screenshot({
+      path: path.join(outDir, "07-sidebar-filter-keeps-main-pin.png"),
+    });
+    await page.evaluate(async (target) => {
+      await window.roamAlphaAPI.ui.filters.setSidebarWindowFilters({
+        window: { type: "mentions", "block-uid": target },
+        filters: {},
+      });
+    }, fixture.target);
+    await sidebarPin.waitFor();
+    await page.evaluate(async (target) => {
+      await window.roamAlphaAPI.ui.rightSidebar.removeWindow({
+        window: { type: "mentions", "block-uid": target },
+      });
+      await window.roamAlphaAPI.ui.rightSidebar.close();
+    }, fixture.target);
     await pinnedRow
       .getByRole("button", { name: "Unpin linked reference", exact: true })
       .click();
@@ -446,6 +444,7 @@ export default {
       .click();
     await pinnedRow.waitFor();
     await page
+      .locator(".roam-article")
       .getByRole("heading", { name: /Pinned references/ })
       .scrollIntoViewIfNeeded();
     await page.screenshot({
@@ -475,6 +474,7 @@ export default {
       duplicateHidden: true,
       visibleCopies: 1,
       filtersRespected: true,
+      sidebarFiltersIndependent: true,
       unpinRestoredNativeRow: true,
       url: page.url(),
       pageErrors: result.pageErrors,

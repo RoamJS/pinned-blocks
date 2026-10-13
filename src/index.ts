@@ -787,6 +787,7 @@ const initializeExtension = async ({
     mutationObserver = new MutationObserver(scheduleIndicatorSync);
     mutationObserver.observe(document.body, {
       childList: true,
+      characterData: true,
       subtree: true,
       attributes: true,
       attributeFilter: ["id", "data-block-uid", "data-page-title"],

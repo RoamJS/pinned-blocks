@@ -9,9 +9,9 @@ const script = buildSync({
     contents: `import { createLinkedReferenceControls, LINKED_REFERENCE_STYLES } from "./src/linkedReferences";
     window.referencePinStyles = LINKED_REFERENCE_STYLES;
     window.filters = {};
-    window.roamAlphaAPI = { ui: { filters: {
+    window.roamAlphaAPI = { ui: { rightSidebar: { getWindows: () => [{type:"mentions", "window-id":"sidebar-mentions-target123", "page-uid":"target123"}] }, filters: {
       getGlobalFilters: () => ({}), getPageLinkedRefsFilters: () => window.filters,
-      getSidebarWindowFilters: () => window.filters
+      getSidebarWindowFilters: args => {window.sidebarFilterArgs=args;return window.sidebarFilters || {}}
     } } };
     window.controls = createLinkedReferenceControls({
       readReference: pin => window.missingPins?.includes(pin.blockUid) ? null : ({ sourceTitle: 'Source page', titles: ['Source page', 'Tag'] }),
@@ -200,4 +200,74 @@ test("cleanup restores native layout and delayed renders cannot resurrect mounte
   await expect(page.getByTestId("row-target123-block1234")).toBeVisible();
   await expect(page.locator(".rm-reference-item")).toHaveCount(1);
   expect(await page.evaluate("window.unmounts")).toBeGreaterThan(0);
+});
+
+test("sidebar filters use block-uid and remain independent of main page filters", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    section("target123") +
+      '<div id="right-sidebar">' +
+      section("target123") +
+      "</div>",
+  );
+  await page.evaluate(
+    `window.sidebarFilters={removes:['Tag']};window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])`,
+  );
+  expect(await page.evaluate("window.sidebarFilterArgs")).toEqual({
+    window: { type: "mentions", "block-uid": "target123" },
+  });
+  await expect(
+    page.locator("#right-sidebar .roamjs-reference-pin-panel"),
+  ).toHaveCount(0);
+  await expect(page.locator(".roamjs-reference-pin-panel")).toHaveCount(1);
+  await page.evaluate(
+    `window.sidebarFilters={};window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])`,
+  );
+  await expect(
+    page.locator("#right-sidebar .roamjs-reference-pin-panel"),
+  ).toHaveCount(1);
+});
+
+test("filter changes refresh unloaded pins even without a native DOM change", async ({
+  page,
+}) => {
+  await setup(page, section("target123", "2 Linked References", "other1234"));
+  await page.evaluate(
+    `window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])`,
+  );
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toBeVisible();
+  await page.evaluate(`window.filters={removes:['Tag']}`);
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toHaveCount(0);
+  await page.evaluate(`window.filters={}`);
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toBeVisible();
+  await page.evaluate(`window.controls.cleanup()`);
+  await page.waitForTimeout(600);
+  await expect(page.locator('[class*="roamjs-reference-pin"]')).toHaveCount(0);
+});
+
+test("a recreated empty sidebar reference list restores pins from its window identity", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    '<div id="right-sidebar"><div class="rm-sidebar-window" id="sidebar-window-sidebar-mentions-target123">' +
+      section("target123") +
+      "</div></div>",
+  );
+  await page.evaluate(
+    `window.sidebarFilters={removes:['Tag']};window.controls.sync([{targetUid:'target123',blockUid:'block1234'}]); const old=document.querySelector('.rm-mentions'); const fresh=old.cloneNode(false); old.replaceWith(fresh); window.controls.sync([{targetUid:'target123',blockUid:'block1234'}]);`,
+  );
+  await expect(page.locator(".roamjs-reference-pin-panel")).toHaveCount(0);
+  await page.evaluate(`window.sidebarFilters={}`);
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toBeVisible();
 });

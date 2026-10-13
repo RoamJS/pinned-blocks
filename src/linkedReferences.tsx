@@ -177,15 +177,38 @@ export const createLinkedReferenceControls = ({
       if (!inactive) sync(latestPins);
     }
   };
+  const getSidebarWindow = (
+    list: HTMLElement,
+  ):
+    | {
+        type: string;
+        "page-uid"?: string;
+        "block-uid"?: string;
+      }
+    | undefined => {
+    const sidebar = list.closest(".rm-sidebar-window");
+    return window.roamAlphaAPI?.ui.rightSidebar
+      ?.getWindows()
+      .find(
+        (entry) => sidebar?.id === `sidebar-window-${entry["window-id"]}`,
+      ) as
+      | { type: string; "page-uid"?: string; "block-uid"?: string }
+      | undefined;
+  };
   const getFilters = (
     list: HTMLElement,
     targetUid: string,
   ): ReferenceFilters[] => {
     const api = window.roamAlphaAPI?.ui.filters;
     if (!api) return [];
-    const local = list.closest(".rm-sidebar-window")
-      ? api.getSidebarWindowFilters({
-          window: { "page-uid": targetUid, type: "outline" },
+    // The installed Roam types use page-uid here; the filters API expects block-uid.
+    const getSidebarFilters = api.getSidebarWindowFilters as unknown as (args: {
+      window: { type: string; "block-uid": string };
+    }) => ReferenceFilters;
+    const sidebarType = getSidebarWindow(list)?.type || "mentions";
+    const local = list.closest("#right-sidebar, .roam-right-sidebar-content")
+      ? getSidebarFilters({
+          window: { "block-uid": targetUid, type: sidebarType },
         })
       : api.getPageLinkedRefsFilters({ page: { uid: targetUid } });
     return [api.getGlobalFilters(), local];
@@ -224,7 +247,12 @@ export const createLinkedReferenceControls = ({
         .filter((entry): entry is { row: HTMLElement; pin: ReferencePin } =>
           Boolean(entry),
         );
-      const targetUid = rows[0]?.pin.targetUid || targets.get(list);
+      const sidebarWindow = getSidebarWindow(list);
+      const targetUid =
+        rows[0]?.pin.targetUid ||
+        sidebarWindow?.["page-uid"] ||
+        sidebarWindow?.["block-uid"] ||
+        targets.get(list);
       if (!targetUid) return;
       targets.set(list, targetUid);
       const filters = getFilters(list, targetUid);
@@ -370,10 +398,27 @@ export const createLinkedReferenceControls = ({
       }
     });
   };
+  let filterSnapshot = "";
+  // Roam can change filters without changing any currently loaded result rows.
+  const filterPoll = window.setInterval(() => {
+    if (inactive || !latestPins.length) return;
+    const snapshot = JSON.stringify(
+      Array.from(
+        document.querySelectorAll<HTMLElement>(".rm-mentions"),
+      ).flatMap((list) => {
+        const targetUid = targets.get(list);
+        return targetUid ? [[targetUid, getFilters(list, targetUid)]] : [];
+      }),
+    );
+    if (snapshot === filterSnapshot) return;
+    filterSnapshot = snapshot;
+    sync(latestPins);
+  }, 500);
   return {
     sync,
     cleanup: (): void => {
       inactive = true;
+      window.clearInterval(filterPoll);
       controls.forEach((control, row) => removeControl(row, control));
       panels.forEach((panel, list) => removePanel(list, panel));
       decorated.forEach((element) =>

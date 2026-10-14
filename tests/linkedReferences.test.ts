@@ -499,3 +499,46 @@ test("daily notes retain per-article targets when the main API returns no single
   await expect(page.getByTestId("row-10-13-2026-block1234")).toBeHidden();
   await expect(page.getByTestId("row-10-12-2026-other1234")).toBeHidden();
 });
+
+test("collapsed daily-note lists resolve enclosing page metadata and follow changed article identity", async ({
+  page,
+}) => {
+  const daily = (uid: string, block: string): string =>
+    `<div class="roam-log-page" data-testid="daily-${uid}"><div class="rm-title-display-container" data-page-uid="${uid}"><h1 class="rm-title-display">Daily note</h1></div>${section(uid, "1 Linked Reference", block)}</div>`;
+  await setup(
+    page,
+    '<div class="roam-article">' +
+      daily("10-13-2026", "block1234") +
+      daily("10-12-2026", "other1234") +
+      "</div>",
+  );
+  await page.evaluate(
+    `document.querySelectorAll('.rm-ref-page-view').forEach(group=>group.replaceChildren());window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:async()=>null};window.pins=[{targetUid:'10-13-2026',blockUid:'block1234'},{targetUid:'10-12-2026',blockUid:'other1234'},{targetUid:'10-11-2026',blockUid:'third1234'}];window.controls.sync(window.pins)`,
+  );
+  const today = page.getByTestId("daily-10-13-2026");
+  const yesterday = page.getByTestId("daily-10-12-2026");
+  await expect(
+    today.locator('[data-reference-pin-uid="block1234"]'),
+  ).toContainText("Rendered block1234");
+  await expect(
+    yesterday.locator('[data-reference-pin-uid="other1234"]'),
+  ).toContainText("Rendered other1234");
+  await expect(
+    today.locator('[data-reference-pin-uid="other1234"]'),
+  ).toHaveCount(0);
+  await expect(
+    yesterday.locator('[data-reference-pin-uid="block1234"]'),
+  ).toHaveCount(0);
+  await page.evaluate(
+    `document.querySelector('.rm-title-display-container').dataset.pageUid='10-11-2026';window.controls.sync(window.pins)`,
+  );
+  await expect(
+    today.locator('[data-reference-pin-uid="block1234"]'),
+  ).toHaveCount(0);
+  await expect(
+    today.locator('[data-reference-pin-uid="third1234"]'),
+  ).toContainText("Rendered third1234");
+  await expect(
+    yesterday.locator('[data-reference-pin-uid="other1234"]'),
+  ).toBeVisible();
+});

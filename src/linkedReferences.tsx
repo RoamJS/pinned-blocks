@@ -303,12 +303,19 @@ export const createLinkedReferenceControls = ({
         window.roamAlphaAPI?.ui.mainWindow?.getOpenPageOrBlockUid;
       const hasMainTargetGetter = Boolean(getMainTarget);
       const mainTarget = mainTargets.get(list);
+      const dailyTarget = isMainList
+        ? list
+            .closest(".roam-log-page")
+            ?.querySelector<HTMLElement>(
+              ".rm-title-display-container[data-page-uid]",
+            )?.dataset.pageUid
+        : undefined;
       const needsMainTarget =
         isMainList && hasMainTargetGetter && mainTarget?.url !== url;
       const targetUid = needsMainTarget
         ? undefined
         : isMainList && hasMainTargetGetter
-          ? mainTarget?.uid || nativeRows[0]?.pin.targetUid
+          ? mainTarget?.uid || dailyTarget || nativeRows[0]?.pin.targetUid
           : nativeRows[0]?.pin.targetUid ||
             sidebarWindow?.["page-uid"] ||
             sidebarWindow?.["block-uid"] ||

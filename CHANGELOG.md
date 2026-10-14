@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Fixed saved reference pins loading in Daily Notes articles whose source groups are initially collapsed.
+
 - Fixed pins from the previous page appearing during navigation to collapsed reference groups, including when Roam briefly retains old rows after the URL changes.
 - Kept original reference rows available until pinned copies finish rendering, with a retry action if rendering fails.
 

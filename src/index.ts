@@ -790,7 +790,12 @@ const initializeExtension = async ({
       characterData: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["id", "data-block-uid", "data-page-title"],
+      attributeFilter: [
+        "id",
+        "data-block-uid",
+        "data-page-title",
+        "data-page-uid",
+      ],
     });
 
     window.roamAlphaAPI.ui.blockContextMenu.addCommand({

@@ -30,7 +30,7 @@ page's linked reference results. Click the active pin button to unpin it.
 Pinned results appear under a “Pinned references” heading, show the full source
 page title, and retain Roam's native block controls. Pinned results follow the order in which their pins are saved. The pin button shows a loading state while saving.
 
-Daily note pages are supported. Use the Up and Down arrow keys on a pin button
+Daily note pages and the Daily Notes view are supported, including collapsed reference groups. Use the Up and Down arrow keys on a pin button
 to move between the pin controls in their displayed order. Tab visits the pinned section first, then the remaining native reference controls.
 
 Reference pins are saved separately for each target page or block under

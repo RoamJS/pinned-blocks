@@ -1,10 +1,16 @@
-import { isValidPinnedBlockUid, type PinnedBlocksByParent } from "~/utils/pins";
+import {
+  isValidPinnedBlockUid,
+  isValidPinnedParentUid,
+  type PinnedBlocksByParent,
+} from "~/utils/pins";
+
+import { getReferencePinKey, type ReferencePin } from "~/utils/referencePins";
 
 export const CONFIG_PAGE_TITLE = "roam/js/pinned-blocks";
 export const PINNED_BLOCKS_PROP = "roamjs-pinned-blocks";
 export const PIN_RECORD_VERSION = 1;
 export const NOTICE_TEXT =
-  "This page is used by the Pinned Blocks extension to store shared pin information. Pin order follows the order of blocks in their parent outline. ^^Do not delete or edit the blocks on this page.^^";
+  "This page is used by the Pinned Blocks extension to store shared pin information. Outline pin order follows the order of blocks in their parent outline. Linked reference pins apply only to their target page or block. ^^Do not delete or edit the blocks on this page.^^";
 
 export type BlockProps = Record<string, unknown>;
 
@@ -27,13 +33,25 @@ export type PinRecordProps = {
   "block-uid": string;
 };
 
-export type PinnedBlocksRecordProps = NoticeRecordProps | PinRecordProps;
+export type ReferencePinRecordProps = {
+  type: "reference-pin";
+  version: typeof PIN_RECORD_VERSION;
+  "target-uid": string;
+  "block-uid": string;
+};
+
+export type PinnedBlocksRecordProps =
+  | NoticeRecordProps
+  | PinRecordProps
+  | ReferencePinRecordProps;
 
 export type ConfigRecordSummary = {
   canonicalNoticeUid: string | null;
   duplicateRecordUids: string[];
   pinRecordUidsByPinnedUid: Map<string, string[]>;
   pinnedUids: string[];
+  referencePins: ReferencePin[];
+  referenceRecordUidsByKey: Map<string, string[]>;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -75,11 +93,23 @@ export const getPinnedBlocksRecordProps = (
 
   const blockUid = value["block-uid"];
   if (
-    value.type !== "pin" ||
+    (value.type !== "pin" && value.type !== "reference-pin") ||
     typeof blockUid !== "string" ||
     !isValidPinnedBlockUid(blockUid)
   ) {
     return null;
+  }
+
+  if (value.type === "reference-pin") {
+    const targetUid = value["target-uid"];
+    if (typeof targetUid !== "string" || !isValidPinnedParentUid(targetUid))
+      return null;
+    return {
+      type: "reference-pin",
+      version: PIN_RECORD_VERSION,
+      "target-uid": targetUid,
+      "block-uid": blockUid,
+    };
   }
 
   return {
@@ -107,6 +137,8 @@ export const summarizeConfigRecords = (
   children: ConfigChild[],
 ): ConfigRecordSummary => {
   const noticeUids: string[] = [];
+  const referencePinsByKey = new Map<string, ReferencePin>();
+  const referenceRecordUidsByKey = new Map<string, string[]>();
   const pinRecordUidsByPinnedUid = new Map<string, string[]>();
 
   children.forEach((child) => {
@@ -115,6 +147,20 @@ export const summarizeConfigRecords = (
 
     if (record.type === "notice") {
       noticeUids.push(child.uid);
+      return;
+    }
+
+    if (record.type === "reference-pin") {
+      const pin = {
+        targetUid: record["target-uid"],
+        blockUid: record["block-uid"],
+      };
+      const key = getReferencePinKey(pin);
+      referencePinsByKey.set(key, pin);
+      referenceRecordUidsByKey.set(key, [
+        ...(referenceRecordUidsByKey.get(key) || []),
+        child.uid,
+      ]);
       return;
     }
 
@@ -130,7 +176,10 @@ export const summarizeConfigRecords = (
     (uid) => uid !== canonicalNoticeUid,
   );
 
-  pinRecordUidsByPinnedUid.forEach((recordUids) => {
+  [
+    ...pinRecordUidsByPinnedUid.values(),
+    ...referenceRecordUidsByKey.values(),
+  ].forEach((recordUids) => {
     const canonicalUid = getCanonicalUid(recordUids);
     duplicateRecordUids.push(
       ...recordUids.filter((uid) => uid !== canonicalUid),
@@ -142,6 +191,8 @@ export const summarizeConfigRecords = (
     duplicateRecordUids: Array.from(new Set(duplicateRecordUids)).sort(),
     pinRecordUidsByPinnedUid,
     pinnedUids: Array.from(pinRecordUidsByPinnedUid.keys()),
+    referencePins: Array.from(referencePinsByKey.values()),
+    referenceRecordUidsByKey,
   };
 };
 
@@ -208,5 +259,19 @@ export const createPinRecordProps = (uid: string): BlockProps =>
       type: "pin",
       version: PIN_RECORD_VERSION,
       "block-uid": uid,
+    },
+  });
+
+export const createReferencePinRecordProps = ({
+  targetUid,
+  blockUid,
+}: ReferencePin): BlockProps =>
+  mergePinnedBlocksRecordProps({
+    props: {},
+    record: {
+      type: "reference-pin",
+      version: PIN_RECORD_VERSION,
+      "target-uid": targetUid,
+      "block-uid": blockUid,
     },
   });

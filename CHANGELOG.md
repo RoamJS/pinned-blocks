@@ -2,6 +2,27 @@
 
 ## 1.0.0
 
+- Fixed unnecessary pin refreshes during ordinary typing; reference rows, navigation, and reference-tag changes still refresh pins.
+
+- Fixed sidebar navigation retaining the previous target’s pins and unpin controls while old reference rows remain visible.
+
+- Fixed saved reference pins loading in Daily Notes articles whose source groups are initially collapsed.
+
+- Fixed pins from the previous page appearing during navigation to collapsed reference groups, including when Roam briefly retains old rows after the URL changes.
+- Kept original reference rows available until pinned copies finish rendering, with a retry action if rendering fails.
+
+- Hid inactive linked reference pin buttons until hover or keyboard focus, while keeping active pins visible.
+- Fixed saved pins appearing when the main linked reference groups are initially collapsed.
+
+- Fixed pinned reference copies respecting independent right-sidebar filters.
+
+- Rendered saved linked reference pins immediately before Roam lazy-loads their normal rows, hiding duplicate rows until unpinned.
+
+- Kept linked reference widths and alignment stable while pinning, with full source titles, a pinned heading, and pending button states.
+- Added linked reference pins for daily note pages and arrow-key navigation between pin controls.
+
+- Added pin buttons for keeping selected linked references at the top of a page's results, with shared pins saved separately for each target.
+
 - Added Pinned Blocks for child blocks under any parent block or page.
 - Added clearer package description and search keywords for Roam Depot discovery.
 - Added command palette and block context menu actions for pinning and unpinning.

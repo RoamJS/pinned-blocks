@@ -4,7 +4,13 @@ import getPageUidByPageTitle from "roamjs-components/queries/getPageUidByPageTit
 import getParentUidByBlockUid from "roamjs-components/queries/getParentUidByBlockUid";
 import getShallowTreeByParentUid from "roamjs-components/queries/getShallowTreeByParentUid";
 import type { OnloadArgs, PullBlock } from "roamjs-components/types";
+import {
+  createLinkedReferenceControls,
+  LINKED_REFERENCE_STYLES,
+} from "~/linkedReferences";
+import { getReferencePinKey, type ReferencePin } from "~/utils/referencePins";
 import { createAsyncLifecycle } from "~/utils/asyncLifecycle";
+import { observePinStructure } from "~/utils/pinObserver";
 import {
   CONFIG_PAGE_TITLE,
   NOTICE_TEXT,
@@ -12,6 +18,7 @@ import {
   blockPropsRequireRewrite,
   createNoticeRecordProps,
   createPinRecordProps,
+  createReferencePinRecordProps,
   getPinnedBlocksRecordProps,
   mergePinnedBlocksRecordProps,
   normalizeBlockProps,
@@ -197,6 +204,7 @@ const initializeExtension = async ({
   isCancelled,
 }: OnloadArgs & { isCancelled: () => boolean }): Promise<() => void> => {
   let currentSettings: PinnedBlocksByParent = {};
+  let referencePins: ReferencePin[] = [];
   let configWatcherCleanup: (() => void) | null = null;
   let configWatcherPageUid = "";
   const parentWatcherCleanups = new Map<string, () => void>();
@@ -215,6 +223,8 @@ const initializeExtension = async ({
 
   const style = addStyle(
     `
+      ${LINKED_REFERENCE_STYLES}
+
       .${PINNED_BLOCK_CLASS} {
         position: relative;
       }
@@ -363,7 +373,9 @@ const initializeExtension = async ({
     const recordsToRepair = children.filter(
       (child) =>
         child.propsRequireRewrite &&
-        getPinnedBlocksRecordProps(child.props)?.type === "pin",
+        ["pin", "reference-pin"].includes(
+          getPinnedBlocksRecordProps(child.props)?.type || "",
+        ),
     );
     if (recordsToRepair.length) {
       await Promise.all(
@@ -389,6 +401,8 @@ const initializeExtension = async ({
 
   const syncPinnedIndicators = (): void => {
     indicatorFrame = null;
+    if (isInactive()) return;
+    referenceControls.sync(referencePins);
     const pinnedUids = getPinnedUids(currentSettings);
 
     document
@@ -570,6 +584,7 @@ const initializeExtension = async ({
       getParentUidByBlockUid,
       getDirectChildUids,
     });
+    referencePins = summary.referencePins;
     applyCurrentSettings(settings);
 
     if (staleUids.length) {
@@ -688,6 +703,46 @@ const initializeExtension = async ({
     }
   };
 
+  const referenceControls = createLinkedReferenceControls({
+    togglePin: async (pin): Promise<void> => {
+      if (isInactive()) return;
+      try {
+        await enqueueMutation(async () => {
+          if (isInactive()) return;
+          const { pageUid, summary } = await reconcileConfigRecords();
+          if (isInactive()) return;
+          const records = summary.referenceRecordUidsByKey.get(
+            getReferencePinKey(pin),
+          );
+          if (records?.length) {
+            await Promise.all(records.map(deleteBlockIfPresent));
+          } else {
+            await createRoamBlock({
+              parentUid: pageUid,
+              order: "last",
+              text: `Pinned linked reference data: ${pin.targetUid} / ${pin.blockUid}`,
+              props: createReferencePinRecordProps(pin),
+            });
+          }
+        });
+        await synchronizeSharedState();
+        if (!isInactive()) referenceControls.sync(referencePins);
+      } catch (error) {
+        console.error(
+          "Pinned Blocks failed to change a linked reference pin",
+          error,
+        );
+        if (!isInactive())
+          toast({
+            id: "pinned-blocks-reference-failed",
+            content:
+              "Pinned Blocks could not change this linked reference pin.",
+            intent: "danger",
+          });
+      }
+    },
+  });
+
   const getFocusedUid = (): string | null =>
     window.roamAlphaAPI.ui.getFocusedBlock()?.["block-uid"] || null;
 
@@ -698,6 +753,7 @@ const initializeExtension = async ({
     if (indicatorFrame !== null) window.cancelAnimationFrame(indicatorFrame);
     if (configSyncTimeout !== null) window.clearTimeout(configSyncTimeout);
     mutationObserver?.disconnect();
+    referenceControls.cleanup();
     enforceTimeouts.forEach((timeout) => window.clearTimeout(timeout));
     enforceTimeouts.clear();
     parentWatcherCleanups.forEach((cleanup) => cleanup());
@@ -729,10 +785,9 @@ const initializeExtension = async ({
     await synchronizeSharedState();
     if (isInactive()) return cleanup;
 
-    mutationObserver = new MutationObserver(scheduleIndicatorSync);
-    mutationObserver.observe(document.body, {
-      childList: true,
-      subtree: true,
+    mutationObserver = observePinStructure({
+      root: document.body,
+      onChange: scheduleIndicatorSync,
     });
 
     window.roamAlphaAPI.ui.blockContextMenu.addCommand({

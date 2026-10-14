@@ -11,6 +11,8 @@
 
 ## Features
 
+- Pin selected references in the linked reference section to the top of the results.
+
 - Pin, unpin, or toggle the focused block from the command palette.
 - Pin or unpin any block from the block context menu.
 - Keep multiple pinned siblings at the top in their current pinned-group order.
@@ -20,6 +22,21 @@
 - Watch pinned parents so regular blocks inserted above or between pinned blocks are moved below the pinned group.
 - Mark pinned blocks with a small pin indicator and stable CSS hooks for custom styling.
 - Share pin state between collaborators through graph-backed records on `roam/js/pinned-blocks`.
+
+## Linked reference pins
+
+Hover over a linked reference or focus it with the keyboard to reveal its pin button. Active pins stay visible. Use the pin button beside a linked reference to keep it at the top of that
+page's linked reference results. Click the active pin button to unpin it.
+Pinned results appear under a “Pinned references” heading, show the full source
+page title, and retain Roam's native block controls. Pinned results follow the order in which their pins are saved. The pin button shows a loading state while saving.
+
+Daily note pages and the Daily Notes view are supported, including collapsed reference groups. Use the Up and Down arrow keys on a pin button
+to move between the pin controls in their displayed order. Tab visits the pinned section first, then the remaining native reference controls.
+
+Reference pins are saved separately for each target page or block under
+`roam/js/pinned-blocks` and shared with collaborators running the extension.
+They change the displayed reference order without changing source block order.
+Saved reference pins render immediately at the top, including references Roam has not lazy-loaded yet. Once the pinned copy has rendered successfully, the extension hides its original row when Roam loads it. While rendering is pending or has failed, the original row remains available. A failed pinned copy offers a Retry button. Unpinning removes the top copy and restores the original row. Roam's include/remove filters still apply to pinned copies. Deleted blocks and blocks that no longer reference the target are not shown.
 
 ## Multiplayer graphs
 

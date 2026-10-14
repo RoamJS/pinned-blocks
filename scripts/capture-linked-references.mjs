@@ -43,6 +43,7 @@ let captureStartedAt;
 let captureEndedAt;
 const frames = [];
 const frameWrites = [];
+const recordingErrors = [];
 const chromium = await loadChromium({
   cwd: repoDir,
   playwrightPackageRoot: process.env.PLAYWRIGHT_PACKAGE_ROOT,
@@ -60,6 +61,12 @@ const result = await runExtensionTest({
       viewport: { width: 1440, height: 900 },
     });
     const screencast = await session.context.newCDPSession(session.page);
+    let stopping = false;
+    const closeSession = session.close;
+    session.close = async () => {
+      stopping = true;
+      await closeSession();
+    };
     screencast.on("Page.screencastFrame", (event) => {
       const frame = {
         path: path.join(
@@ -73,9 +80,11 @@ const result = await runExtensionTest({
       frameWrites.push(
         fs.writeFile(frame.path, Buffer.from(event.data, "base64")),
       );
-      void screencast.send("Page.screencastFrameAck", {
-        sessionId: event.sessionId,
-      });
+      void screencast
+        .send("Page.screencastFrameAck", { sessionId: event.sessionId })
+        .catch((error) => {
+          if (!stopping) recordingErrors.push(error.message);
+        });
     });
     await session.page.exposeFunction("beginDemoCapture", async () => {
       captureStartedAt = performance.now();
@@ -90,6 +99,7 @@ const result = await runExtensionTest({
     });
     await session.page.exposeFunction("endDemoCapture", async () => {
       captureEndedAt = performance.now();
+      stopping = true;
       await screencast.send("Page.stopScreencast");
       await Promise.all(frameWrites);
       return (captureEndedAt - captureStartedAt) / 1000;
@@ -99,6 +109,10 @@ const result = await runExtensionTest({
 });
 if (!result.ok || !result.test?.value?.capture)
   throw new Error("The live demo did not complete; inspect last-run.json");
+if (recordingErrors.length)
+  throw new Error(
+    `Screencast acknowledgements failed: ${recordingErrors.join("; ")}`,
+  );
 const timing = result.test.value.capture;
 if (!frames.length) throw new Error("No live screencast frames were captured");
 const rawPath = path.join(rawDir, "recording.ffconcat");
@@ -129,6 +143,8 @@ const conversion = spawnSync(
     "0",
     "-i",
     rawPath,
+    "-vf",
+    "pad=ceil(iw/2)*2:ceil(ih/2)*2",
     "-r",
     "25",
     "-an",

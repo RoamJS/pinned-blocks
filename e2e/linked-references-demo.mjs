@@ -3,13 +3,25 @@ import path from "node:path";
 let fixture;
 const ownedPages = new Set();
 let previousMainUid;
-const referenceRow = (page, uid) =>
-  page
-    .locator(`.rm-reference-item:has([data-block-uid="${uid}"])`)
-    .locator("..");
+const nativeReferenceItem = (page, uid) =>
+  page.locator(
+    `.roam-article .rm-ref-page-view .rm-reference-item:has([data-block-uid="${uid}"])`,
+  );
+const nativeReferenceRow = (page, uid) =>
+  nativeReferenceItem(page, uid).locator("..");
+const pinnedReferenceRow = (page, uid) =>
+  page.locator(
+    `.roam-article .roamjs-reference-pin-panel [data-reference-pin-uid="${uid}"]`,
+  );
 const pinButton = (page, uid) =>
-  referenceRow(page, uid).getByRole("button", {
-    name: /^(Unpin|Pin) linked reference$/,
+  nativeReferenceRow(page, uid).getByRole("button", {
+    name: "Pin linked reference",
+    exact: true,
+  });
+const unpinButton = (page, uid) =>
+  pinnedReferenceRow(page, uid).getByRole("button", {
+    name: "Unpin linked reference",
+    exact: true,
   });
 const pause = (page) => page.waitForTimeout(2200);
 const waitForTarget = (page, targetUid) =>
@@ -111,9 +123,7 @@ export default {
         fixture,
       );
     const originalOrder = await snapshotOrder();
-    const originalBox = await page
-      .locator(`.rm-reference-item:has([data-block-uid="${first}"])`)
-      .boundingBox();
+    const originalBox = await nativeReferenceItem(page, first).boundingBox();
     await page.addStyleTag({
       content: `.roamjs-demo-cursor{position:fixed;z-index:2147483647;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:17px solid #202b33;transform:rotate(-30deg);transform-origin:0 0;filter:drop-shadow(0 0 1px white);pointer-events:none}.roamjs-demo-cursor-click::after{content:"";position:absolute;left:-16px;top:-4px;width:26px;height:26px;border:2px solid #106ba3;border-radius:50%;animation:click-ring .45s ease-out forwards}@keyframes click-ring{from{opacity:1;scale:.5}to{opacity:0;scale:1.5}}`,
     });
@@ -135,8 +145,14 @@ export default {
     const start = await page.evaluate(() => window.beginDemoCapture());
     await page.screenshot({ path: path.join(outDir, "01-before-pinning.png") });
     await pause(page);
-    await referenceRow(page, first).hover();
+    await nativeReferenceRow(page, first).hover();
     await page.waitForTimeout(900);
+    const hoveredNativeBox = await nativeReferenceItem(
+      page,
+      first,
+    ).boundingBox();
+    assert(Math.abs(hoveredNativeBox.width - originalBox.width) < 1);
+    assert(Math.abs(hoveredNativeBox.x - originalBox.x) < 1);
     await pinButton(page, first).click();
     await page.waitForFunction(
       (uid) =>
@@ -145,21 +161,25 @@ export default {
         ),
       first,
     );
-    const pinnedBox = await page
-      .locator(`.rm-reference-item:has([data-block-uid="${first}"])`)
-      .boundingBox();
+    await page.mouse.move(1150, 160);
+    const pinnedItem = pinnedReferenceRow(page, first).locator(
+      ":scope > .rm-reference-item",
+    );
+    const pinnedBox = await pinnedItem.boundingBox();
+    await pinnedReferenceRow(page, first).hover();
+    const hoveredPinnedBox = await pinnedItem.boundingBox();
     assert(
-      Math.abs(pinnedBox.width - originalBox.width) < 1,
-      `Row width changed: ${JSON.stringify({ originalBox, pinnedBox })}`,
+      Math.abs(hoveredPinnedBox.width - pinnedBox.width) < 1,
+      `Pinned row width changed on hover: ${JSON.stringify({ pinnedBox, hoveredPinnedBox })}`,
     );
     assert(
-      Math.abs(pinnedBox.x - originalBox.x) < 1,
-      `Row alignment changed: ${JSON.stringify({ originalBox, pinnedBox })}`,
+      Math.abs(hoveredPinnedBox.x - pinnedBox.x) < 1,
+      `Pinned row alignment changed on hover: ${JSON.stringify({ pinnedBox, hoveredPinnedBox })}`,
     );
     await page.mouse.move(1150, 160);
     await pause(page);
     await page.screenshot({ path: path.join(outDir, "02-one-pinned.png") });
-    await referenceRow(page, second).hover();
+    await nativeReferenceRow(page, second).hover();
     await page.waitForTimeout(900);
     await pinButton(page, second).click();
     await page.waitForFunction(
@@ -170,10 +190,12 @@ export default {
     const rows = await page
       .locator(".roamjs-reference-pin-row")
       .evaluateAll((rows) =>
-        rows.map((row) => ({
-          pinned: row.classList.contains("roamjs-reference-pin-active"),
-          y: row.getBoundingClientRect().y,
-        })),
+        rows
+          .filter((row) => row.getClientRects().length)
+          .map((row) => ({
+            pinned: row.classList.contains("roamjs-reference-pin-active"),
+            y: row.getBoundingClientRect().y,
+          })),
       );
     assert(
       Math.max(...rows.filter((row) => row.pinned).map((row) => row.y)) <
@@ -205,7 +227,7 @@ export default {
         document.querySelectorAll(".roamjs-reference-pin-active").length === 2,
     );
     await pause(page);
-    await pinButton(page, first).click();
+    await unpinButton(page, first).click();
     await page.waitForFunction(
       () =>
         document.querySelectorAll(".roamjs-reference-pin-active").length === 1,
@@ -222,7 +244,7 @@ export default {
     );
     await waitForTarget(page, fixture.dailyUid);
     await pinButton(page, first).waitFor();
-    await referenceRow(page, first).hover();
+    await nativeReferenceRow(page, first).hover();
     await page.waitForTimeout(900);
     await pinButton(page, first).click();
     await page.waitForFunction(
@@ -249,6 +271,8 @@ export default {
     await page.setViewportSize({ width: 1440, height: 900 });
     return {
       capture: { start, end },
+      fixturePages: fixture.pages,
+      fixtureBlocks: fixture.blocks,
       assertions: {
         pin: "passed",
         multiplePins: "passed",
@@ -256,8 +280,10 @@ export default {
         pageIsolation: "passed",
         unpin: "passed",
         sourceOrder: "unchanged",
-        rowWidth: "unchanged",
-        rowAlignment: "unchanged",
+        nativeRowHoverWidth: "unchanged",
+        nativeRowHoverAlignment: "unchanged",
+        pinnedRowHoverWidth: "unchanged",
+        pinnedRowHoverAlignment: "unchanged",
         dailyNotePins: "passed",
       },
     };
@@ -265,21 +291,36 @@ export default {
   async cleanup({ page }) {
     if (!ownedPages.size) return;
     await page.evaluate(
-      async ({ pages, previousMainUid }) => {
+      async ({ pages, blocks, previousMainUid }) => {
         const api = window.roamAlphaAPI;
+        await api.ui.mainWindow.openDailyNotes();
+        const normalize = (value) =>
+          value && typeof value === "object"
+            ? Object.fromEntries(
+                Object.entries(value).map(([key, child]) => [
+                  key.replace(/^:+/, ""),
+                  normalize(child),
+                ]),
+              )
+            : value;
         const records = api.data.fast.q(
           '[:find (pull ?c [:block/uid :block/props]) :where [?p :node/title "roam/js/pinned-blocks"] [?p :block/children ?c]]',
         );
         for (const [record] of records) {
-          const props = record[":block/props"];
-          const pin =
-            props?.[":roamjs-pinned-blocks"] || props?.["roamjs-pinned-blocks"];
-          if (pages.includes(pin?.[":target-uid"] || pin?.["target-uid"]))
+          const pin = normalize(record[":block/props"])?.[
+            "roamjs-pinned-blocks"
+          ];
+          if (pages.includes(pin?.["target-uid"]))
             await api.data.block.delete({
               block: { uid: record[":block/uid"] },
             });
         }
-        for (const uid of pages) await api.data.page.delete({ page: { uid } });
+        for (const uid of blocks) {
+          if (api.data.pull("[:block/uid]", [":block/uid", uid]))
+            await api.data.block.delete({ block: { uid } });
+        }
+        for (const uid of [...pages].reverse())
+          await api.data.page.delete({ page: { uid } });
         if (
           previousMainUid &&
           api.data.pull("[:block/uid]", [":block/uid", previousMainUid])
@@ -289,7 +330,19 @@ export default {
           await api.ui.mainWindow.openDailyNotes();
         }
       },
-      { pages: [...ownedPages], previousMainUid },
+      {
+        pages: [...ownedPages],
+        blocks: fixture?.blocks || [],
+        previousMainUid,
+      },
+    );
+    await page.waitForFunction(
+      (pages) =>
+        pages.every(
+          (uid) =>
+            !window.roamAlphaAPI.data.pull("[:block/uid]", [":block/uid", uid]),
+        ),
+      [...ownedPages],
     );
     return { fixtureRemoved: true };
   },

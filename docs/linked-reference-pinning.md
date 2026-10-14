@@ -26,7 +26,7 @@ node scripts/capture-linked-references.mjs local/linked-references-media/<unique
 
 The capture runner uses the RoamJS Playwright session and extension-loader skills. `ROAMJS_SKILLS_ROOT` can select the repository's canonical skill collection. Use `ROAM_PLAYWRIGHT_ENV_PATH`, `ROAM_PROFILE_DIR`, and `PLAYWRIGHT_PACKAGE_ROOT` to select an existing environment, authenticated profile, and Playwright runtime. Credentials and profile contents stay outside the repository.
 
-The runner captures the real browser with Chromium's screencast API, retains source frame timestamps, writes a silent MP4 and six screenshots, and records checksums and behavior assertions in `media-manifest.json`. It refuses to overwrite completed captures. Fixture cleanup runs after recording ends.
+The runner captures the real browser with Chromium's screencast API, retains source frame timestamps, writes a silent MP4 and seven screenshots, and records checksums and behavior assertions in `media-manifest.json`. It refuses to overwrite completed captures. Pin actions use native rows; unpin actions and pinned-row measurements use the pinned panel. Position checks exclude hidden native duplicates. Hover checks measure width and alignment separately in native rows and pinned copies. Fixture cleanup runs after recording ends.
 
 The model's video review uses extracted timeline frames and full-resolution screenshots. This is a visual and temporal review, not native MP4 playback or an audio review. Generated media, reviewer logs, and raw captures stay under ignored `local/` directories.
 

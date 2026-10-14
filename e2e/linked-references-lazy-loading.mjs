@@ -499,21 +499,43 @@ export default {
         target: fixture.target,
       };
     await page.evaluate(
-      async ({ pages, target }) => {
+      async ({ pages, target, blocks }) => {
         const api = window.roamAlphaAPI;
-        const records = api.data.fast.q(
-          '[:find (pull ?c [:block/uid :block/props]) :where [?p :node/title "roam/js/pinned-blocks"] [?p :block/children ?c]]',
-        );
-        for (const [c] of records) {
-          const raw = c[":block/props"];
-          const p =
-            raw?.[":roamjs-pinned-blocks"] || raw?.["roamjs-pinned-blocks"];
-          if ((p?.[":target-uid"] || p?.["target-uid"]) === target)
-            await api.data.block.delete({ block: { uid: c[":block/uid"] } });
+        if (target && pages.includes(target)) {
+          const normalize = (value) =>
+            value && typeof value === "object"
+              ? Object.fromEntries(
+                  Object.entries(value).map(([key, child]) => [
+                    key.replace(/^:+/, ""),
+                    normalize(child),
+                  ]),
+                )
+              : value;
+          const records = api.data.fast.q(
+            '[:find (pull ?c [:block/uid :block/props]) :where [?p :node/title "roam/js/pinned-blocks"] [?p :block/children ?c]]',
+          );
+          for (const [record] of records) {
+            const pin = normalize(record[":block/props"])?.[
+              "roamjs-pinned-blocks"
+            ];
+            if (
+              pin?.type === "reference-pin" &&
+              pin.version === 1 &&
+              pin["target-uid"] === target &&
+              blocks.includes(pin["block-uid"])
+            )
+              await api.data.block.delete({
+                block: { uid: record[":block/uid"] },
+              });
+          }
         }
         for (const uid of pages) await api.data.page.delete({ page: { uid } });
       },
-      { pages: [...ownedPages], target: fixture?.target },
+      {
+        pages: [...ownedPages],
+        target: fixture?.target,
+        blocks: fixture?.blocks.map(({ uid }) => uid) || [],
+      },
     );
     return { pagesRemoved: ownedPages.size };
   },

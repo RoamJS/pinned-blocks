@@ -118,7 +118,7 @@ export default {
   },
   async cleanup({ page }) {
     await page.evaluate(
-      async ({ pages, block, previousMainUid }) => {
+      async ({ pages, target, block, previousMainUid }) => {
         const api = window.roamAlphaAPI;
         if (window.originalPinnedBlockRenderer)
           api.ui.components.renderBlock = window.originalPinnedBlockRenderer;
@@ -131,23 +131,35 @@ export default {
                 ]),
               )
             : value;
-        const records = api.data.fast.q(
-          '[:find (pull ?c [:block/uid :block/props]) :where [?p :node/title "roam/js/pinned-blocks"] [?p :block/children ?c]]',
-        );
-        for (const [record] of records)
-          if (
-            normalize(record[":block/props"])?.["roamjs-pinned-blocks"]?.[
-              "block-uid"
-            ] === block
-          )
-            await api.data.block.delete({
-              block: { uid: record[":block/uid"] },
-            });
+        if (target && block && pages.includes(target)) {
+          const records = api.data.fast.q(
+            '[:find (pull ?c [:block/uid :block/props]) :where [?p :node/title "roam/js/pinned-blocks"] [?p :block/children ?c]]',
+          );
+          for (const [record] of records) {
+            const pin = normalize(record[":block/props"])?.[
+              "roamjs-pinned-blocks"
+            ];
+            if (
+              pin?.type === "reference-pin" &&
+              pin.version === 1 &&
+              pin["target-uid"] === target &&
+              pin["block-uid"] === block
+            )
+              await api.data.block.delete({
+                block: { uid: record[":block/uid"] },
+              });
+          }
+        }
         for (const uid of pages) await api.data.page.delete({ page: { uid } });
         if (previousMainUid)
           await api.ui.mainWindow.openPage({ page: { uid: previousMainUid } });
       },
-      { pages: ownedPages, block: fixture?.block, previousMainUid },
+      {
+        pages: ownedPages,
+        target: fixture?.target,
+        block: fixture?.block,
+        previousMainUid,
+      },
     );
     return { pagesRemoved: ownedPages.length, rendererRestored: true };
   },

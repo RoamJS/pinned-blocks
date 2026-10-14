@@ -161,7 +161,10 @@ export const createLinkedReferenceControls = ({
   const panels = new Map<HTMLElement, MountedPanel>();
   const decorated = new Set<HTMLElement>();
   const targets = new WeakMap<HTMLElement, string>();
-  const targetUrls = new WeakMap<HTMLElement, string>();
+  const mainTargets = new WeakMap<
+    HTMLElement,
+    { url: string; uid: string | null }
+  >();
   const resolvingTargets = new WeakMap<HTMLElement, { url: string }>();
   const pendingKeys = new Set<string>();
   let latestPins: ReferencePin[] = [];
@@ -270,7 +273,7 @@ export const createLinkedReferenceControls = ({
           ?.textContent?.match(/\bLinked References?\b/)
       )
         return;
-      const rows = Array.from(
+      const nativeRows = Array.from(
         list.querySelectorAll<HTMLElement>(".rm-reference-item"),
       )
         .filter((item) => !item.closest(`.${PANEL_CLASS}`))
@@ -296,36 +299,33 @@ export const createLinkedReferenceControls = ({
         Boolean(list.closest(".roam-article")) &&
         !list.closest("#right-sidebar, .roam-right-sidebar-content");
       const url = window.location.href;
-      const cachedTarget =
-        isMainList && targetUrls.get(list) !== url
-          ? undefined
-          : targets.get(list);
-      const targetUid =
-        rows[0]?.pin.targetUid ||
-        sidebarWindow?.["page-uid"] ||
-        sidebarWindow?.["block-uid"] ||
-        cachedTarget;
+      const getMainTarget =
+        window.roamAlphaAPI?.ui.mainWindow?.getOpenPageOrBlockUid;
+      const hasMainTargetGetter = Boolean(getMainTarget);
+      const mainTarget = mainTargets.get(list);
+      const needsMainTarget =
+        isMainList && hasMainTargetGetter && mainTarget?.url !== url;
+      const targetUid = needsMainTarget
+        ? undefined
+        : isMainList && hasMainTargetGetter
+          ? mainTarget?.uid || nativeRows[0]?.pin.targetUid
+          : nativeRows[0]?.pin.targetUid ||
+            sidebarWindow?.["page-uid"] ||
+            sidebarWindow?.["block-uid"] ||
+            targets.get(list);
       if (!targetUid) {
-        const getMainTarget =
-          window.roamAlphaAPI?.ui.mainWindow?.getOpenPageOrBlockUid;
         if (
-          isMainList &&
-          getMainTarget &&
+          needsMainTarget &&
+          hasMainTargetGetter &&
           resolvingTargets.get(list)?.url !== url
         ) {
           const request = { url };
           resolvingTargets.set(list, request);
           void getMainTarget()
             .then((uid) => {
-              if (
-                inactive ||
-                !list.isConnected ||
-                window.location.href !== url ||
-                !uid
-              )
+              if (inactive || !list.isConnected || window.location.href !== url)
                 return;
-              targets.set(list, uid);
-              targetUrls.set(list, url);
+              mainTargets.set(list, { url, uid });
               sync(latestPins);
             })
             .catch((error: unknown) => {
@@ -343,7 +343,7 @@ export const createLinkedReferenceControls = ({
         return;
       }
       targets.set(list, targetUid);
-      if (isMainList) targetUrls.set(list, url);
+      const rows = nativeRows.filter(({ pin }) => pin.targetUid === targetUid);
       const filters = getFilters(list, targetUid);
       const entries: PinnedEntry[] = pins
         .filter((pin) => pin.targetUid === targetUid)

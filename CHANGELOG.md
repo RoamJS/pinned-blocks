@@ -2,7 +2,7 @@
 
 ## 1.0.0
 
-- Fixed pins from the previous page appearing after navigation to collapsed reference groups.
+- Fixed pins from the previous page appearing during navigation to collapsed reference groups, including when Roam briefly retains old rows after the URL changes.
 - Kept original reference rows available until pinned copies finish rendering, with a retry action if rendering fails.
 
 - Hid inactive linked reference pin buttons until hover or keyboard focus, while keeping active pins visible.

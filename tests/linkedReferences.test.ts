@@ -437,3 +437,65 @@ test("renderer failures preserve the native row and retry restores one visible c
   await page.evaluate("window.controls.sync([])");
   await expect(row).toBeVisible();
 });
+
+test("old native rows cannot seed the destination cache before collapsed rows disappear", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    '<div class="roam-article">' + section("target123") + "</div>",
+  );
+  await page.evaluate(
+    `window.pins=[{targetUid:'target123',blockUid:'block1234'},{targetUid:'target456',blockUid:'other1234'}];window.currentTarget='target123';window.lookups=0;window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:async()=>{window.lookups++;return window.currentTarget}};window.controls.sync(window.pins)`,
+  );
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toContainText("Rendered block1234");
+  await page.evaluate(
+    `window.currentTarget='target456';window.location.hash='page/target456';window.controls.sync(window.pins)`,
+  );
+  await expect(
+    page.locator('[data-reference-pin-uid="other1234"]'),
+  ).toContainText("Rendered other1234");
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("row-target123-block1234").getByRole("button"),
+  ).toHaveCount(0);
+  await page.evaluate(
+    `document.querySelector('.rm-ref-page-view').replaceChildren();window.controls.sync(window.pins)`,
+  );
+  await page.waitForTimeout(600);
+  await expect(
+    page.locator('[data-reference-pin-uid="other1234"]'),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toHaveCount(0);
+  expect(await page.evaluate("window.lookups")).toBe(2);
+});
+
+test("daily notes retain per-article targets when the main API returns no single page", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    '<div class="roam-article">' +
+      section("10-13-2026") +
+      '</div><div class="roam-article">' +
+      section("10-12-2026", "1 Linked Reference", "other1234") +
+      "</div>",
+  );
+  await page.evaluate(
+    `window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:async()=>null};window.controls.sync([{targetUid:'10-13-2026',blockUid:'block1234'},{targetUid:'10-12-2026',blockUid:'other1234'}])`,
+  );
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toContainText("Rendered block1234");
+  await expect(
+    page.locator('[data-reference-pin-uid="other1234"]'),
+  ).toContainText("Rendered other1234");
+  await expect(page.getByTestId("row-10-13-2026-block1234")).toBeHidden();
+  await expect(page.getByTestId("row-10-12-2026-other1234")).toBeHidden();
+});

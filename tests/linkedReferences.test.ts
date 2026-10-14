@@ -542,3 +542,84 @@ test("collapsed daily-note lists resolve enclosing page metadata and follow chan
     yesterday.locator('[data-reference-pin-uid="other1234"]'),
   ).toBeVisible();
 });
+
+for (const { label, field, type } of [
+  { label: "page", field: "page-uid", type: "mentions" },
+  { label: "block", field: "block-uid", type: "block" },
+  { label: "block mentions", field: "mentions-uid", type: "mentions" },
+]) {
+  test(`sidebar ${label} navigation trusts window identity over retained rows and unpins the destination`, async ({
+    page,
+  }) => {
+    await setup(
+      page,
+      '<div class="roam-article">' +
+        section("target123") +
+        '</div><div id="right-sidebar"><div class="rm-sidebar-window" id="sidebar-window-reused-window">' +
+        section("target123") +
+        "</div></div>",
+    );
+    await page.evaluate(
+      ({ field, type }) => {
+        const state = window as unknown as {
+          sidebarWindow: Record<string, string>;
+          pins: { targetUid: string; blockUid: string }[];
+          controls: {
+            sync: (pins: { targetUid: string; blockUid: string }[]) => void;
+          };
+          roamAlphaAPI: {
+            ui: {
+              rightSidebar: { getWindows: () => Record<string, string>[] };
+            };
+          };
+        };
+        state.sidebarWindow = {
+          type,
+          "window-id": "reused-window",
+          [field]: "target123",
+        };
+        state.roamAlphaAPI.ui.rightSidebar.getWindows = () => [
+          state.sidebarWindow,
+        ];
+        state.pins = [
+          { targetUid: "target123", blockUid: "block1234" },
+          { targetUid: "target456", blockUid: "block1234" },
+        ];
+        state.controls.sync(state.pins);
+      },
+      { field, type },
+    );
+    const mainPin = page.locator(
+      '.roam-article [data-reference-pin-uid="block1234"]',
+    );
+    const sidebarPin = page.locator(
+      '#right-sidebar [data-reference-pin-uid="block1234"]',
+    );
+    await expect(sidebarPin).toContainText("Rendered block1234");
+    await page.evaluate(
+      `window.sidebarWindow['${field}']='target456';window.controls.sync(window.pins)`,
+    );
+    await expect(sidebarPin).toContainText("Rendered block1234");
+    await expect(
+      page
+        .locator("#right-sidebar")
+        .getByTestId("row-target123-block1234")
+        .getByRole("button"),
+    ).toHaveCount(0);
+    expect(await page.evaluate("window.sidebarFilterArgs")).toEqual({
+      window: { type, "block-uid": "target456" },
+    });
+    await sidebarPin
+      .getByRole("button", { name: "Unpin linked reference", exact: true })
+      .click();
+    expect(await page.evaluate("window.clickedPin")).toEqual({
+      targetUid: "target456",
+      blockUid: "block1234",
+    });
+    await page.evaluate(
+      `window.pins=window.pins.filter(pin=>pin.targetUid!=='target456');document.querySelector('#right-sidebar .rm-ref-page-view').replaceChildren();window.controls.sync(window.pins)`,
+    );
+    await expect(sidebarPin).toHaveCount(0);
+    await expect(mainPin).toBeVisible();
+  });
+}

@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Fixed sidebar navigation retaining the previous target’s pins and unpin controls while old reference rows remain visible.
+
 - Fixed saved reference pins loading in Daily Notes articles whose source groups are initially collapsed.
 
 - Fixed pins from the previous page appearing during navigation to collapsed reference groups, including when Roam briefly retains old rows after the URL changes.

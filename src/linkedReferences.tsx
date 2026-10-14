@@ -231,6 +231,7 @@ export const createLinkedReferenceControls = ({
         type: string;
         "page-uid"?: string;
         "block-uid"?: string;
+        "mentions-uid"?: string;
       }
     | undefined => {
     const sidebar = list.closest(".rm-sidebar-window");
@@ -239,7 +240,12 @@ export const createLinkedReferenceControls = ({
       .find(
         (entry) => sidebar?.id === `sidebar-window-${entry["window-id"]}`,
       ) as
-      | { type: string; "page-uid"?: string; "block-uid"?: string }
+      | {
+          type: string;
+          "page-uid"?: string;
+          "block-uid"?: string;
+          "mentions-uid"?: string;
+        }
       | undefined;
   };
   const getFilters = (
@@ -316,9 +322,10 @@ export const createLinkedReferenceControls = ({
         ? undefined
         : isMainList && hasMainTargetGetter
           ? mainTarget?.uid || dailyTarget || nativeRows[0]?.pin.targetUid
-          : nativeRows[0]?.pin.targetUid ||
-            sidebarWindow?.["page-uid"] ||
+          : sidebarWindow?.["page-uid"] ||
             sidebarWindow?.["block-uid"] ||
+            sidebarWindow?.["mentions-uid"] ||
+            nativeRows[0]?.pin.targetUid ||
             targets.get(list);
       if (!targetUid) {
         if (

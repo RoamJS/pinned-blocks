@@ -10,6 +10,7 @@ import {
 } from "~/linkedReferences";
 import { getReferencePinKey, type ReferencePin } from "~/utils/referencePins";
 import { createAsyncLifecycle } from "~/utils/asyncLifecycle";
+import { observePinStructure } from "~/utils/pinObserver";
 import {
   CONFIG_PAGE_TITLE,
   NOTICE_TEXT,
@@ -784,18 +785,9 @@ const initializeExtension = async ({
     await synchronizeSharedState();
     if (isInactive()) return cleanup;
 
-    mutationObserver = new MutationObserver(scheduleIndicatorSync);
-    mutationObserver.observe(document.body, {
-      childList: true,
-      characterData: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: [
-        "id",
-        "data-block-uid",
-        "data-page-title",
-        "data-page-uid",
-      ],
+    mutationObserver = observePinStructure({
+      root: document.body,
+      onChange: scheduleIndicatorSync,
     });
 
     window.roamAlphaAPI.ui.blockContextMenu.addCommand({

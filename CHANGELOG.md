@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Fixed unnecessary pin refreshes during ordinary typing; reference rows, navigation, and reference-tag changes still refresh pins.
+
 - Fixed sidebar navigation retaining the previous target’s pins and unpin controls while old reference rows remain visible.
 
 - Fixed saved reference pins loading in Daily Notes articles whose source groups are initially collapsed.

@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Fixed pinned source-page links opened in a new tab or copied while the main window is on Search or another non-page route.
+
 - Added native-style source-page carets to collapse and expand individual pinned block references.
 
 - Removed duplicate source breadcrumbs from pinned blocks and matched pinned pages to native page-reference rows.

@@ -14,7 +14,7 @@ const script = buildSync({
       getSidebarWindowFilters: args => {window.sidebarFilterArgs=args;return window.sidebarFilters || {}}
     } } };
     window.controls = createLinkedReferenceControls({
-      readReference: pin => pin.blockUid === 'title1234' ? ({sourceTitle:'Title [[Target]]', sourceUid:pin.blockUid, isPage:true, titles:['Title [[Target]]', 'Target']}) : window.missingPins?.includes(pin.blockUid) ? null : ({ sourceTitle: 'Source page', titles: ['Source page', 'Tag'] }),
+      readReference: pin => pin.blockUid === 'title1234' ? ({sourceTitle:'Title [[Target]]', sourceUid:pin.blockUid, isPage:true, titles:['Title [[Target]]', 'Target']}) : window.missingPins?.includes(pin.blockUid) ? null : ({ sourceTitle: 'Source page', sourceUid: 'source123', titles: ['Source page', 'Tag'] }),
       renderBlock: async ({uid,el,"zoom-path?":zoomPath}) => { window.lastZoomPath=zoomPath; if (window.failRender) throw new Error("Injected render failure"); if (window.holdRender) await new Promise(resolve => {window.finishRender = resolve}); el.innerHTML = '<div class="roam-block-container" data-block-uid="'+uid+'">Rendered '+uid+'</div>'; window.renders = (window.renders || 0) + 1; },
       unmountBlock: async ({el}) => {el.innerHTML = ''; window.unmounts = (window.unmounts || 0) + 1},
       togglePin: async pin => {window.clickedPin = pin; window.toggleCount = (window.toggleCount || 0) + 1; if(window.holdToggle) await new Promise(resolve => {window.finishToggle = resolve})}
@@ -711,6 +711,101 @@ test("page-title references pin independently of block results and keep source l
     "aria-pressed",
     "false",
   );
+});
+
+for (const [label, graphRoot, route] of [
+  ["graph root", "#/app/Test%20Graph", ""],
+  ["page", "#/app/Test%20Graph", "/page/target123"],
+  ["search", "#/app/Test%20Graph", "/search"],
+  ["search query", "#/app/Test%20Graph", "/search?query=Tag%2FName"],
+  ["graph view", "#/app/Test%20Graph", "/graph"],
+  ["offline graph", "#/offline/Test%20Graph", "/search"],
+]) {
+  test(`pinned source links use the graph root from ${label}`, async ({
+    page,
+  }) => {
+    const base = "https://roamresearch.com/?theme=dark";
+    await page.route("https://roamresearch.com/**", (request) =>
+      request.fulfill({ contentType: "text/html", body: "<html></html>" }),
+    );
+    await page.goto(`${base}${graphRoot}${route}`);
+    await setup(
+      page,
+      '<div id="right-sidebar">' + section("target123") + "</div>",
+    );
+    await page.evaluate(
+      `window.controls.sync([{targetUid:'target123',blockUid:'title1234'},{targetUid:'target123',blockUid:'block1234'}])`,
+    );
+    const links = page.locator(".roamjs-reference-pin-panel a.rm-page-ref");
+    await expect(links).toHaveCount(2);
+    await expect(links.filter({ hasText: "Title [[Target]]" })).toHaveAttribute(
+      "href",
+      `${base}${graphRoot}/page/title1234`,
+    );
+    await expect(links.filter({ hasText: "Source page" })).toHaveAttribute(
+      "href",
+      `${base}${graphRoot}/page/source123`,
+    );
+    await page.evaluate("window.controls.cleanup()");
+  });
+}
+
+test("source links preserve native modified and middle clicks from search", async ({
+  page,
+  context,
+}) => {
+  const graphRoot = "https://roamresearch.com/#/app/Test%20Graph";
+  await context.route("https://roamresearch.com/**", (request) =>
+    request.fulfill({ contentType: "text/html", body: "<html></html>" }),
+  );
+  await page.goto(`${graphRoot}/search`);
+  await setup(
+    page,
+    '<div id="right-sidebar">' + section("target123") + "</div>",
+  );
+  await page.evaluate(`window.roamAlphaAPI.ui.mainWindow = {openPage: args => {window.openedPage=args}};
+    window.roamAlphaAPI.ui.rightSidebar.addWindow = args => {window.openedSidebar=args};
+    window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`);
+  const link = page.locator(".roamjs-reference-pin-panel a.rm-page-ref");
+  const modifiers = await link.evaluate((element) =>
+    ["ctrlKey", "metaKey", "altKey"].map((modifier) => {
+      let prevented = true;
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        [modifier]: true,
+      });
+      // Cancel only after React handles the event so the test does not open tabs.
+      document.addEventListener(
+        "click",
+        (nativeEvent) => {
+          prevented = nativeEvent.defaultPrevented;
+          nativeEvent.preventDefault();
+        },
+        { once: true },
+      );
+      element.dispatchEvent(event);
+      return prevented;
+    }),
+  );
+  expect(modifiers).toEqual([false, false, false]);
+  expect(
+    await page.evaluate("window.openedPage || window.openedSidebar"),
+  ).toBeUndefined();
+  const popupPromise = context.waitForEvent("page");
+  await link.click({ button: "middle" });
+  const popup = await popupPromise;
+  await popup.waitForURL(`${graphRoot}/page/title1234`);
+  await popup.close();
+  await link.click();
+  expect(await page.evaluate("window.openedPage")).toEqual({
+    page: { uid: "title1234" },
+  });
+  await link.click({ modifiers: ["Shift"] });
+  expect(await page.evaluate("window.openedSidebar")).toEqual({
+    window: { type: "outline", "block-uid": "title1234" },
+  });
+  await page.evaluate("window.controls.cleanup()");
 });
 
 test("saved page-title pins stay visible without block rows and respect filters", async ({

@@ -52,6 +52,14 @@ type RenderBlock = (args: {
 type UnmountBlock = (args: { el: HTMLElement }) => Promise<unknown>;
 type PinnedEntry = ReferencePin &
   ReferenceDetails & { pageExpanded?: boolean; pageExpandable?: boolean };
+const getSourcePageHref = (uid: string): string => {
+  const url = new URL(window.location.href);
+  const graphRoot = url.hash.match(/^#\/(?:app|offline)\/[^/?#]+/)?.[0];
+  if (!graphRoot) return url.href;
+  url.hash = `${graphRoot}/page/${encodeURIComponent(uid)}`;
+  return url.href;
+};
+
 const SourcePageLink = ({
   title,
   uid,
@@ -62,7 +70,7 @@ const SourcePageLink = ({
   uid ? (
     <a
       className="rm-page-ref"
-      href={`${window.location.href.split("/page/")[0]}/page/${uid}`}
+      href={getSourcePageHref(uid)}
       onClick={(event): void => {
         if (
           event.metaKey ||

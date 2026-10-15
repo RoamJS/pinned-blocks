@@ -375,7 +375,11 @@ export const createLinkedReferenceControls = ({
       const nativeRows = Array.from(
         list.querySelectorAll<HTMLElement>(".rm-reference-item"),
       )
-        .filter((item) => !item.closest(`.${PANEL_CLASS}`))
+        .filter(
+          (item) =>
+            item.closest(".rm-mentions") === list &&
+            !item.closest(`.${PANEL_CLASS}`),
+        )
         .map((item) => {
           const block = item.querySelector<HTMLElement>(
             ".roam-block-container[data-block-uid]",
@@ -458,7 +462,11 @@ export const createLinkedReferenceControls = ({
       list
         .querySelectorAll<HTMLElement>(".rm-ref-page-view")
         .forEach((group) => {
-          if (group.closest(`.${PANEL_CLASS}`)) return;
+          if (
+            group.closest(".rm-mentions") !== list ||
+            group.closest(`.${PANEL_CLASS}`)
+          )
+            return;
           const heading = group.querySelector<HTMLElement>(
             ":scope > .rm-title-arrow-wrapper",
           );

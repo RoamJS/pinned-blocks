@@ -500,16 +500,17 @@ export const createLinkedReferenceControls = ({
           ReactDOM.render(
             <>
               {!preferences.hideHeading && (
-                <div
-                  className="roamjs-reference-pin-heading"
-                  role="heading"
-                  aria-level={3}
-                >
+                <div className="roamjs-reference-pin-heading">
                   <Button
                     minimal
                     small
                     icon={collapsed ? "caret-right" : "caret-down"}
-                    text={`Pinned references (${entries.length})`}
+                    aria-label="Toggle pinned references"
+                    title={
+                      collapsed
+                        ? "Expand pinned references"
+                        : "Collapse pinned references"
+                    }
                     aria-expanded={!collapsed}
                     aria-controls={panel.contentId}
                     onClick={(): void => {

@@ -60,7 +60,7 @@ test("pins render before lazy rows arrive, hide duplicates, and reveal native ro
   const pinned = page.locator('[data-reference-pin-uid="block1234"]');
   await expect(pinned).toContainText("Rendered block1234");
   await expect(
-    page.getByRole("heading", { name: "Pinned references (1)" }),
+    page.getByRole("button", { name: "Toggle pinned references" }),
   ).toBeVisible();
   await page
     .locator(".rm-ref-page-view > div:last-child")
@@ -634,13 +634,17 @@ test("collapse hides top copies and native duplicates, heading preference always
     `window.controls.sync([{targetUid:'target123', blockUid:'block1234'}])`,
   );
   const heading = page.getByRole("button", {
-    name: "Pinned references (1)",
+    name: "Toggle pinned references",
     exact: true,
   });
   const copy = page.locator('[data-reference-pin-uid="block1234"]');
   await expect(copy).toBeVisible();
+  await expect(heading).toHaveText("");
+  await expect(page.getByText(/^Pinned references \(\d+\)$/)).toHaveCount(0);
+  await expect(heading).toHaveAttribute("title", "Collapse pinned references");
   const before = await page.evaluate("window.renders");
   await heading.click();
+  await expect(heading).toHaveAttribute("title", "Expand pinned references");
   await expect(heading).toHaveAttribute("aria-expanded", "false");
   await expect(copy).toBeHidden();
   await expect(page.getByTestId("row-target123-block1234")).toBeHidden();
@@ -723,7 +727,7 @@ test("saved page-title pins load without block rows and respect collapse and fil
   await expect(copy).toHaveCount(1);
   await expect(copy).toBeHidden();
   await page
-    .getByRole("button", { name: "Pinned references (1)", exact: true })
+    .getByRole("button", { name: "Toggle pinned references", exact: true })
     .click();
   await expect(copy).toBeVisible();
   await page.evaluate(
@@ -749,7 +753,7 @@ test("pinning a title preserves a collapsed source heading with unloaded block r
   ).toBeVisible();
   await expect(page.locator(".rm-title-arrow-wrapper")).toBeVisible();
   await page
-    .getByRole("button", { name: "Pinned references (1)", exact: true })
+    .getByRole("button", { name: "Toggle pinned references", exact: true })
     .click();
   await expect(page.locator(".rm-title-arrow-wrapper")).toBeVisible();
 });

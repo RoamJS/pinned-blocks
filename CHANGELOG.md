@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Removed the pinned-reference label and count while keeping the collapse control.
+
 - Hid pin controls for filtered-out title references without removing their saved pins.
 
 - Fixed Shift-click on pinned source labels opening pages in the sidebar.

@@ -9,7 +9,12 @@ type Entity = {
   ":block/children"?: Entity[];
   ":block/page"?: Entity;
 };
-export type ReferenceDetails = { sourceTitle: string; titles: string[] };
+export type ReferenceDetails = {
+  sourceTitle: string;
+  sourceUid?: string;
+  isPage?: boolean;
+  titles: string[];
+};
 export type ReferenceFilters = { includes?: string[]; removes?: string[] };
 
 export const matchesReferenceFilters = ({
@@ -42,13 +47,21 @@ export const readReferenceDetails = ({
       if (ref[":block/uid"]) refs.add(ref[":block/uid"]);
       if (ref[":node/title"]) titles.add(ref[":node/title"]);
     });
-    entity[":block/children"]?.forEach(visit);
+    if (!block[":node/title"]) entity[":block/children"]?.forEach(visit);
   };
   visit(block);
   if (!refs.has(targetUid)) return null;
   // Native linked-reference filters include the source page and ancestor context.
   block[":block/parents"]?.forEach(visit);
-  const sourceTitle = block[":block/page"]?.[":node/title"] || "";
+  const isPage = Boolean(block[":node/title"]);
+  const sourceTitle =
+    block[":node/title"] || block[":block/page"]?.[":node/title"] || "";
+  const sourceUid = isPage ? blockUid : block[":block/page"]?.[":block/uid"];
   if (sourceTitle) titles.add(sourceTitle);
-  return { sourceTitle, titles: [...titles] };
+  return {
+    sourceTitle,
+    ...(sourceUid ? { sourceUid } : {}),
+    ...(isPage ? { isPage: true } : {}),
+    titles: [...titles],
+  };
 };

@@ -2,6 +2,10 @@
 
 ## 1.0.0
 
+- Added collapsible pinned references and an option to hide their heading while keeping the group expanded.
+- Made pinned source page titles clickable, including Shift-click to open the sidebar.
+- Added pins for linked references that come from page titles.
+
 - Fixed unnecessary pin refreshes during ordinary typing; reference rows, navigation, and reference-tag changes still refresh pins.
 
 - Fixed sidebar navigation retaining the previous target’s pins and unpin controls while old reference rows remain visible.

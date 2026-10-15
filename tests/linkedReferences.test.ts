@@ -9,12 +9,14 @@ const script = buildSync({
     contents: `import { createLinkedReferenceControls, LINKED_REFERENCE_STYLES } from "./src/linkedReferences";
     window.referencePinStyles = LINKED_REFERENCE_STYLES;
     window.filters = {};
-    window.roamAlphaAPI = { ui: { rightSidebar: { getWindows: () => [{type:"mentions", "window-id":"sidebar-mentions-target123", "page-uid":"target123"}] }, filters: {
+    window.roamAlphaAPI = { data: { fast: { q: () => [['title1234']] } }, ui: { rightSidebar: { getWindows: () => [{type:"mentions", "window-id":"sidebar-mentions-target123", "page-uid":"target123"}] }, filters: {
       getGlobalFilters: () => ({}), getPageLinkedRefsFilters: () => window.filters,
       getSidebarWindowFilters: args => {window.sidebarFilterArgs=args;return window.sidebarFilters || {}}
     } } };
     window.controls = createLinkedReferenceControls({
-      readReference: pin => window.missingPins?.includes(pin.blockUid) ? null : ({ sourceTitle: 'Source page', titles: ['Source page', 'Tag'] }),
+      getPreferences: () => window.referencePreferences || {hideHeading:false,collapsedTargets:[]},
+      setCollapsed: (uid, collapsed) => {window.referencePreferences = {...window.referencePreferences, hideHeading: false, collapsedTargets: collapsed ? [uid] : []}},
+      readReference: pin => pin.blockUid === 'title1234' ? ({sourceTitle:'Title [[Target]]', sourceUid:pin.blockUid, isPage:true, titles:['Title [[Target]]', 'Target']}) : window.missingPins?.includes(pin.blockUid) ? null : ({ sourceTitle: 'Source page', titles: ['Source page', 'Tag'] }),
       renderBlock: async ({uid,el}) => { if (window.failRender) throw new Error("Injected render failure"); if (window.holdRender) await new Promise(resolve => {window.finishRender = resolve}); el.innerHTML = '<div class="roam-block-container" data-block-uid="'+uid+'">Rendered '+uid+'</div>'; window.renders = (window.renders || 0) + 1; },
       unmountBlock: async ({el}) => {el.innerHTML = ''; window.unmounts = (window.unmounts || 0) + 1},
       togglePin: async pin => {window.clickedPin = pin; window.toggleCount = (window.toggleCount || 0) + 1; if(window.holdToggle) await new Promise(resolve => {window.finishToggle = resolve})}
@@ -623,3 +625,160 @@ for (const { label, field, type } of [
     await expect(mainPin).toBeVisible();
   });
 }
+
+test("collapse hides top copies and native duplicates, heading preference always restores access", async ({
+  page,
+}) => {
+  await setup(page, section("target123"));
+  await page.evaluate(
+    `window.controls.sync([{targetUid:'target123', blockUid:'block1234'}])`,
+  );
+  const heading = page.getByRole("button", {
+    name: "Pinned references (1)",
+    exact: true,
+  });
+  const copy = page.locator('[data-reference-pin-uid="block1234"]');
+  await expect(copy).toBeVisible();
+  const before = await page.evaluate("window.renders");
+  await heading.click();
+  await expect(heading).toHaveAttribute("aria-expanded", "false");
+  await expect(copy).toBeHidden();
+  await expect(page.getByTestId("row-target123-block1234")).toBeHidden();
+  await heading.press("Enter");
+  await expect(copy).toBeVisible();
+  expect(await page.evaluate("window.renders")).toBe(before);
+  await heading.click();
+  await page.evaluate(
+    `window.referencePreferences.hideHeading = true; window.controls.sync([{targetUid:'target123', blockUid:'block1234'}])`,
+  );
+  await expect(heading).toHaveCount(0);
+  await expect(copy).toBeVisible();
+  await copy.getByRole("button", { name: "Unpin linked reference" }).click();
+  await page.evaluate("window.controls.sync([])");
+  await expect(page.getByTestId("row-target123-block1234")).toBeVisible();
+});
+
+test("page-title references pin independently of block results and keep source links clickable", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    section("target123").replace(
+      ">Source page</div>",
+      '><div class="rm-ref-page-view-title"><a><span class="rm-page__title">Title [[Target]]</span></a></div></div>',
+    ),
+  );
+  await page.evaluate(`window.roamAlphaAPI.ui.mainWindow = {openPage: args => {window.openedPage=args}};
+    window.roamAlphaAPI.ui.rightSidebar.addWindow = args => {window.openedSidebar=args}; window.controls.sync([])`);
+  const title = page.locator(".rm-title-arrow-wrapper");
+  await title.hover();
+  await title
+    .getByRole("button", { name: "Pin linked reference", exact: true })
+    .click();
+  expect(await page.evaluate("window.clickedPin")).toEqual({
+    targetUid: "target123",
+    blockUid: "title1234",
+  });
+  await page.evaluate(
+    `window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
+  );
+  const copy = page.locator('[data-reference-pin-uid="title1234"]');
+  await expect(copy).toBeVisible();
+  await expect(title).toBeVisible(); // Still labels the unpinned child result.
+  await expect(page.getByTestId("row-target123-block1234")).toBeVisible();
+  await copy.getByRole("link").click();
+  expect(await page.evaluate("window.openedPage")).toEqual({
+    page: { uid: "title1234" },
+  });
+  await copy.getByRole("link").click({ modifiers: ["Shift"] });
+  expect(await page.evaluate("window.openedSidebar")).toEqual({
+    window: { type: "outline", "page-uid": "title1234" },
+  });
+  await copy.getByRole("button", { name: "Unpin linked reference" }).click();
+  await page.evaluate("window.controls.sync([])");
+  await expect(copy).toHaveCount(0);
+  await title.hover();
+  await expect(title.getByRole("button")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+});
+
+test("saved page-title pins load without block rows and respect collapse and filters", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    '<div class="roam-article">' +
+      section("target123").replace(
+        /<div><div class="flex-h-box"[\s\S]*?(?=<\/div><\/div><\/div><\/div>$)/,
+        "",
+      ) +
+      "</div>",
+  );
+  await page.evaluate(`window.roamAlphaAPI.ui.mainWindow = {getOpenPageOrBlockUid:async()=> 'target123'};
+    window.referencePreferences={hideHeading:false,collapsedTargets:['target123']};
+    window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`);
+  const copy = page.locator('[data-reference-pin-uid="title1234"]');
+  await expect(copy).toHaveCount(1);
+  await expect(copy).toBeHidden();
+  await page
+    .getByRole("button", { name: "Pinned references (1)", exact: true })
+    .click();
+  await expect(copy).toBeVisible();
+  await page.evaluate(
+    `window.filters={removes:['Target']};window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
+  );
+  await expect(copy).toHaveCount(0);
+  await page.evaluate(
+    `window.filters={};window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
+  );
+  await expect(copy).toBeVisible();
+});
+
+test("pinning a title preserves a collapsed source heading with unloaded block references", async ({
+  page,
+}) => {
+  const html =
+    '<div class="roam-article"><div class="rm-reference-container"><div class="flex-h-box"><strong>2 Linked References</strong></div><div class="rm-mentions"><div class="rm-ref-page-view"><div class="rm-title-arrow-wrapper"><span class="rm-caret-closed"></span><div class="rm-ref-page-view-title">Title [[Target]]</div></div></div></div></div></div>';
+  await setup(page, html);
+  await page.evaluate(`window.roamAlphaAPI.ui.mainWindow = {getOpenPageOrBlockUid:async()=> 'target123'};
+    window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`);
+  await expect(
+    page.locator('[data-reference-pin-uid="title1234"]'),
+  ).toBeVisible();
+  await expect(page.locator(".rm-title-arrow-wrapper")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Pinned references (1)", exact: true })
+    .click();
+  await expect(page.locator(".rm-title-arrow-wrapper")).toBeVisible();
+});
+
+test("a previously hidden title heading returns when an unpinned child reference appears", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    '<div class="roam-article">' +
+      section("target123").replace(
+        ">Source page</div>",
+        '><div class="rm-ref-page-view-title">Title [[Target]]</div></div>',
+      ) +
+      "</div>",
+  );
+  await page.evaluate(
+    `window.removedReferenceRow = document.querySelector('[data-testid="row-target123-block1234"]'); window.removedReferenceRow.remove(); window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:async()=> 'target123'}; window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
+  );
+  await expect(
+    page.locator('[data-reference-pin-uid="title1234"]'),
+  ).toBeVisible();
+  await expect(page.locator(".rm-title-arrow-wrapper")).toBeHidden();
+  await page.evaluate(
+    `document.querySelector('.rm-ref-page-view > div:last-child').append(window.removedReferenceRow); window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
+  );
+  await expect(page.locator(".rm-title-arrow-wrapper")).toBeVisible();
+  await page.evaluate(
+    `window.removedReferenceRow.remove();document.querySelector('.rm-title-arrow-wrapper').insertAdjacentHTML('afterbegin','<span class="rm-caret-closed"></span>');window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
+  );
+  await expect(page.locator(".rm-title-arrow-wrapper")).toBeVisible();
+});

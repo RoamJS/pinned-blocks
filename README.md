@@ -27,8 +27,9 @@
 
 Hover over a linked reference or focus it with the keyboard to reveal its pin button. Active pins stay visible. Use the pin button beside a linked reference to keep it at the top of that
 page's linked reference results. Click the active pin button to unpin it.
-Pinned results appear under a “Pinned references” heading, show the full source
-page title, and retain Roam's native block controls. Pinned results follow the order in which their pins are saved. The pin button shows a loading state while saving.
+Pinned results appear under a “Pinned references” heading. Click it to collapse or expand the group; collapsed pins stay hidden from the normal results. Collapse state is saved for each target in your extension settings. To remove the heading, enable **Hide pinned references heading** in Roam Depot → Pinned Blocks. Hiding the heading always expands the group so every pin remains accessible.
+
+Pinned results show a clickable source page title (Shift-click opens the sidebar) and retain Roam's native block controls. References within page titles can also be pinned using the pin beside their source heading. A pinned title stays separate from pins on individual blocks from that page. Pinned results follow the order in which their pins are saved. The pin button shows a loading state while saving.
 
 Daily note pages and the Daily Notes view are supported, including collapsed reference groups. Use the Up and Down arrow keys on a pin button
 to move between the pin controls in their displayed order. Tab visits the pinned section first, then the remaining native reference controls.

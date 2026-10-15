@@ -20,9 +20,14 @@ export const LINKED_REFERENCE_STYLES = `
   .roamjs-reference-pin-control > button { grid-column: 2; }
   .roamjs-reference-pin-control > button[aria-pressed="false"][aria-busy="false"] { opacity: 0; pointer-events: none; }
   .roamjs-reference-pin-row:hover > .roamjs-reference-pin-control > button,
-  .roamjs-reference-pin-row:focus-within > .roamjs-reference-pin-control > button { opacity: 1; pointer-events: auto; }
+  .roamjs-reference-pin-row:focus-within > .roamjs-reference-pin-control > button,
+  .roamjs-reference-pin-title-row:hover > .roamjs-reference-pin-control > button,
+  .roamjs-reference-pin-title-row:focus-within > .roamjs-reference-pin-control > button { opacity: 1; pointer-events: auto; }
   .roamjs-reference-pin-source { padding: 4px 8px; font-size: 12px; opacity: 0.8; overflow-wrap: anywhere; }
-  .roamjs-reference-pin-heading { padding: 8px 12px; font-size: 12px; font-weight: 600; }
+  .roamjs-reference-pin-heading { padding: 4px 8px; }
+  .roamjs-reference-pin-content[hidden] { display: none !important; }
+  .roamjs-reference-pin-title-row { display: flex; align-items: center; }
+  .roamjs-reference-pin-title-row > .roamjs-reference-pin-control { display: inline-flex; margin-left: auto; }
   .roamjs-reference-pin-active { margin: 0 4px 8px 12px; }
   .roamjs-reference-pin-active > .rm-reference-item { background: var(--roamjs-reference-pin-background, rgba(137, 160, 179, 0.08)); }
   .roamjs-reference-pin-duplicate, .roamjs-reference-pin-empty-heading { display: none !important; }
@@ -37,6 +42,7 @@ type MountedPanel = {
   mount: HTMLDivElement;
   signature: string;
   renderedKeys: Set<string>;
+  contentId: string;
   onRendered: (key: string) => void;
 };
 type RenderBlock = (args: {
@@ -46,6 +52,45 @@ type RenderBlock = (args: {
 }) => Promise<unknown>;
 type UnmountBlock = (args: { el: HTMLElement }) => Promise<unknown>;
 type PinnedEntry = ReferencePin & ReferenceDetails;
+export type ReferencePreferences = {
+  hideHeading: boolean;
+  collapsedTargets: string[];
+};
+
+const SourcePageLink = ({
+  title,
+  uid,
+}: {
+  title: string;
+  uid?: string;
+}): React.ReactElement =>
+  uid ? (
+    <a
+      className="rm-page-ref"
+      href={`${window.location.href.split("/page/")[0]}/page/${uid}`}
+      onClick={(event): void => {
+        if (
+          event.metaKey ||
+          event.ctrlKey ||
+          event.altKey ||
+          event.button !== 0
+        )
+          return;
+        event.preventDefault();
+        if (event.shiftKey) {
+          void window.roamAlphaAPI.ui.rightSidebar.addWindow({
+            window: { type: "outline", "page-uid": uid },
+          });
+        } else {
+          void window.roamAlphaAPI.ui.mainWindow.openPage({ page: { uid } });
+        }
+      }}
+    >
+      {title}
+    </a>
+  ) : (
+    <>{title}</>
+  );
 
 const PinButton = ({
   pinned,
@@ -146,6 +191,8 @@ const NativeBlock = ({
 
 export const createLinkedReferenceControls = ({
   togglePin,
+  getPreferences = () => ({ hideHeading: false, collapsedTargets: [] }),
+  setCollapsed = () => {},
   readReference = readReferenceDetails,
   renderBlock = (args): Promise<unknown> =>
     window.roamAlphaAPI.ui.components.renderBlock(args),
@@ -153,6 +200,8 @@ export const createLinkedReferenceControls = ({
     window.roamAlphaAPI.ui.components.unmountNode(args),
 }: {
   togglePin: (pin: ReferencePin) => Promise<void>;
+  getPreferences?: () => ReferencePreferences;
+  setCollapsed?: (targetUid: string, collapsed: boolean) => void;
   readReference?: (pin: ReferencePin) => ReferenceDetails | null;
   renderBlock?: RenderBlock;
   unmountBlock?: UnmountBlock;
@@ -169,6 +218,7 @@ export const createLinkedReferenceControls = ({
   const pendingKeys = new Set<string>();
   let latestPins: ReferencePin[] = [];
   let inactive = false;
+  let panelSequence = 0;
   const decorate = (
     element: HTMLElement,
     className: string,
@@ -358,6 +408,41 @@ export const createLinkedReferenceControls = ({
       }
       targets.set(list, targetUid);
       const rows = nativeRows.filter(({ pin }) => pin.targetUid === targetUid);
+      const headingsWithHiddenBlocks = new Set<HTMLElement>();
+      // A page title can itself reference the target, even when it has no block rows.
+      list
+        .querySelectorAll<HTMLElement>(".rm-ref-page-view")
+        .forEach((group) => {
+          if (group.closest(`.${PANEL_CLASS}`)) return;
+          const heading = group.querySelector<HTMLElement>(
+            ":scope > .rm-title-arrow-wrapper",
+          );
+          const title = heading
+            ?.querySelector<HTMLElement>(".rm-ref-page-view-title")
+            ?.textContent?.trim();
+          if (!heading || !title) return;
+          const source = window.roamAlphaAPI.data.fast.q(
+            "[:find ?uid :in $ ?title :where [?p :node/title ?title] [?p :block/uid ?uid]]",
+            title,
+          )[0]?.[0] as string | undefined;
+          if (!source) return;
+          const pin = { targetUid, blockUid: source };
+          if (!readReference(pin)?.isPage) return;
+          rows.push({ row: heading, pin });
+          if (
+            heading.querySelector(".rm-caret-closed") &&
+            window.roamAlphaAPI.data.fast.q(
+              "[:find ?b :in $ ?source ?target :where [?p :block/uid ?source] [?b :block/page ?p] [?b :block/refs ?ref] [?ref :block/uid ?target]]",
+              source,
+              targetUid,
+            ).length
+          )
+            headingsWithHiddenBlocks.add(heading);
+        });
+      const preferences = getPreferences();
+      const collapsed =
+        !preferences.hideHeading &&
+        preferences.collapsedTargets.includes(targetUid);
       const filters = getFilters(list, targetUid);
       const entries: PinnedEntry[] = pins
         .filter((pin) => pin.targetUid === targetUid)
@@ -381,6 +466,7 @@ export const createLinkedReferenceControls = ({
             mount,
             signature: "",
             renderedKeys: new Set(),
+            contentId: `roamjs-reference-pins-${++panelSequence}`,
             onRendered: (key): void => {
               if (inactive || panels.get(list) !== mountedPanel) return;
               mountedPanel.renderedKeys.add(key);
@@ -393,54 +479,90 @@ export const createLinkedReferenceControls = ({
         panel.renderedKeys.forEach((key) => {
           if (!shownKeys.has(key)) panel.renderedKeys.delete(key);
         });
-        const signature = JSON.stringify(
+        const signature = JSON.stringify([
+          preferences.hideHeading,
+          collapsed,
           entries.map((entry) => [
             entry,
             pendingKeys.has(getReferencePinKey(entry)),
           ]),
-        );
+        ]);
         if (panel.signature !== signature) {
           panel.signature = signature;
           ReactDOM.render(
             <>
+              {!preferences.hideHeading && (
+                <div
+                  className="roamjs-reference-pin-heading"
+                  role="heading"
+                  aria-level={3}
+                >
+                  <Button
+                    minimal
+                    small
+                    icon={collapsed ? "caret-right" : "caret-down"}
+                    text={`Pinned references (${entries.length})`}
+                    aria-expanded={!collapsed}
+                    aria-controls={panel.contentId}
+                    onClick={(): void => {
+                      setCollapsed(targetUid, !collapsed);
+                      sync(latestPins);
+                    }}
+                  />
+                </div>
+              )}
               <div
-                className="roamjs-reference-pin-heading"
-                role="heading"
-                aria-level={3}
+                id={panel.contentId}
+                className="roamjs-reference-pin-content"
+                hidden={collapsed}
               >
-                Pinned references ({entries.length})
-              </div>
-              {entries.map((pin) => (
-                <React.Fragment key={getReferencePinKey(pin)}>
-                  <div className="roamjs-reference-pin-source">
-                    {pin.sourceTitle}
-                  </div>
-                  <div
-                    className={`${ROW_CLASS} roamjs-reference-pin-active`}
-                    data-reference-pin-uid={pin.blockUid}
-                  >
-                    <div className="rm-reference-item">
-                      <NativeBlock
-                        uid={pin.blockUid}
-                        pinKey={getReferencePinKey(pin)}
-                        onRendered={panel.onRendered}
-                        renderBlock={renderBlock}
-                        unmountBlock={unmountBlock}
-                      />
+                {entries.map((pin) => (
+                  <React.Fragment key={getReferencePinKey(pin)}>
+                    {!pin.isPage && (
+                      <div className="roamjs-reference-pin-source">
+                        <SourcePageLink
+                          title={pin.sourceTitle}
+                          uid={pin.sourceUid}
+                        />
+                      </div>
+                    )}
+                    <div
+                      className={`${ROW_CLASS} roamjs-reference-pin-active`}
+                      data-reference-pin-uid={pin.blockUid}
+                    >
+                      <div className="rm-reference-item">
+                        {pin.isPage && (
+                          <div className="roamjs-reference-pin-source">
+                            <SourcePageLink
+                              title={pin.sourceTitle}
+                              uid={pin.sourceUid}
+                            />
+                          </div>
+                        )}
+                        {!pin.isPage && (
+                          <NativeBlock
+                            uid={pin.blockUid}
+                            pinKey={getReferencePinKey(pin)}
+                            onRendered={panel.onRendered}
+                            renderBlock={renderBlock}
+                            unmountBlock={unmountBlock}
+                          />
+                        )}
+                      </div>
+                      <span className={CONTROL_CLASS}>
+                        <PinButton
+                          pinned
+                          pending={pendingKeys.has(getReferencePinKey(pin))}
+                          onClick={(): void => {
+                            void runToggle(pin);
+                          }}
+                          onKeyDown={navigateControls}
+                        />
+                      </span>
                     </div>
-                    <span className={CONTROL_CLASS}>
-                      <PinButton
-                        pinned
-                        pending={pendingKeys.has(getReferencePinKey(pin))}
-                        onClick={(): void => {
-                          void runToggle(pin);
-                        }}
-                        onKeyDown={navigateControls}
-                      />
-                    </span>
-                  </div>
-                </React.Fragment>
-              ))}
+                  </React.Fragment>
+                ))}
+              </div>
             </>,
             panel.mount,
           );
@@ -449,12 +571,38 @@ export const createLinkedReferenceControls = ({
       const renderedKeys = panels.get(list)?.renderedKeys;
       const hasRenderedCopy = (pin: ReferencePin): boolean => {
         const key = getReferencePinKey(pin);
-        return shownKeys.has(key) && Boolean(renderedKeys?.has(key));
+        return (
+          shownKeys.has(key) &&
+          (Boolean(renderedKeys?.has(key)) ||
+            Boolean(
+              entries.find((entry) => getReferencePinKey(entry) === key)
+                ?.isPage,
+            ))
+        );
       };
       rows.forEach(({ row, pin }) => {
         activeRows.add(row);
-        decorate(row, ROW_CLASS, activeDecorations);
-        row.classList.toggle(DUPLICATE_CLASS, hasRenderedCopy(pin));
+        const isTitle = row.classList.contains("rm-title-arrow-wrapper");
+        decorate(
+          row,
+          isTitle ? "roamjs-reference-pin-title-row" : ROW_CLASS,
+          activeDecorations,
+        );
+        // Keep a source heading when unpinned block results still need its context.
+        const group = row.closest(".rm-ref-page-view");
+        const hasUnpinnedBlocks =
+          isTitle &&
+          (headingsWithHiddenBlocks.has(row) ||
+            rows.some(
+              (entry) =>
+                entry.row !== row &&
+                entry.row.closest(".rm-ref-page-view") === group &&
+                !hasRenderedCopy(entry.pin),
+            ));
+        row.classList.toggle(
+          DUPLICATE_CLASS,
+          hasRenderedCopy(pin) && !hasUnpinnedBlocks,
+        );
         let control = controls.get(row);
         if (!control || !row.contains(control.mount)) {
           if (control) removeControl(row, control);
@@ -495,8 +643,13 @@ export const createLinkedReferenceControls = ({
         const heading = group.querySelector<HTMLElement>(
           ":scope > .rm-title-arrow-wrapper",
         );
-        if (heading && groupRows.every(({ pin }) => hasRenderedCopy(pin)))
+        if (
+          heading &&
+          !headingsWithHiddenBlocks.has(heading) &&
+          groupRows.every(({ pin }) => hasRenderedCopy(pin))
+        )
           decorate(heading, EMPTY_HEADING_CLASS, activeDecorations);
+        else heading?.classList.remove(EMPTY_HEADING_CLASS);
       });
     });
     controls.forEach((control, row) => {
@@ -509,6 +662,7 @@ export const createLinkedReferenceControls = ({
       if (!activeDecorations.has(element)) {
         element.classList.remove(
           ROW_CLASS,
+          "roamjs-reference-pin-title-row",
           DUPLICATE_CLASS,
           EMPTY_HEADING_CLASS,
         );
@@ -543,6 +697,7 @@ export const createLinkedReferenceControls = ({
       decorated.forEach((element) =>
         element.classList.remove(
           ROW_CLASS,
+          "roamjs-reference-pin-title-row",
           DUPLICATE_CLASS,
           EMPTY_HEADING_CLASS,
         ),

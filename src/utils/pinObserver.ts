@@ -6,6 +6,7 @@ const PIN_STRUCTURE_SELECTOR = [
   ".rm-reference-item",
   ".rm-sidebar-window",
   ".rm-title-display-container",
+  ".rm-title-arrow-wrapper",
   ".roam-block",
   "textarea",
 ].join(", ");
@@ -27,23 +28,33 @@ export const observePinStructure = ({
       mutation.type === "attributes"
         ? mutation.target instanceof Element &&
           mutation.target.matches(PIN_STRUCTURE_SELECTOR)
-        : mutation.type === "childList" &&
-          [...mutation.addedNodes, ...mutation.removedNodes].some(
-            containsPinStructure,
-          ),
+        : (mutation.type === "characterData" ||
+            mutation.type === "childList") &&
+          (Boolean(
+            (mutation.target instanceof Element
+              ? mutation.target
+              : mutation.target.parentElement
+            )?.closest(".rm-ref-page-view-title"),
+          ) ||
+            (mutation.type === "childList" &&
+              [...mutation.addedNodes, ...mutation.removedNodes].some(
+                containsPinStructure,
+              ))),
     );
     if (changed) onChange();
   });
-  // Text edits cannot change pin identity. React may replace text nodes rather
-  // than mutate them, so child-list notifications also need structural filtering.
+  // Native source headings identify page-title references. Only those text edits
+  // and structural changes affect pins; ordinary block typing stays ignored.
   observer.observe(root, {
     childList: true,
+    characterData: true,
     subtree: true,
     attributes: true,
     attributeFilter: [
       "id",
       "data-block-uid",
       "data-page-title",
+      "data-link-title",
       "data-page-uid",
       "data-page-links",
       "data-path-page-links",

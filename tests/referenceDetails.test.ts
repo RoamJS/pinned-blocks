@@ -56,3 +56,37 @@ test("reference details reject stale pins and retain source and ancestor filter 
     else Reflect.deleteProperty(globalThis, "window");
   }
 });
+
+test("page-title pins require a direct title reference and expose source identity", () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const entity = {
+    ":block/uid": "title1234",
+    ":node/title": "Topic [[Target]]",
+    ":block/refs": [{ ":block/uid": "target123", ":node/title": "Target" }],
+    ":block/children": [{ ":block/refs": [{ ":block/uid": "other1234" }] }],
+  };
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { roamAlphaAPI: { data: { pull: () => entity } } },
+  });
+  try {
+    expect(
+      readReferenceDetails({ targetUid: "target123", blockUid: "title1234" }),
+    ).toEqual({
+      sourceTitle: "Topic [[Target]]",
+      sourceUid: "title1234",
+      isPage: true,
+      titles: ["Topic [[Target]]", "Target"],
+    });
+    expect(
+      readReferenceDetails({ targetUid: "other1234", blockUid: "title1234" }),
+    ).toBeNull();
+    entity[":block/refs"] = [];
+    expect(
+      readReferenceDetails({ targetUid: "target123", blockUid: "title1234" }),
+    ).toBeNull();
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "window", previous);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});

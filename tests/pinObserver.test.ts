@@ -125,3 +125,29 @@ test("disconnect prevents refreshes after unload", async ({ page }) => {
   });
   expect(await changes(page)).toBe(0);
 });
+
+test("renaming a native source heading refreshes page-title references", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.evaluate(() => {
+    const heading = document.createElement("div");
+    heading.className = "rm-title-arrow-wrapper";
+    heading.innerHTML =
+      '<div class="rm-ref-page-view-title"><a><span>Source [[Target]]</span></a></div>';
+    document.querySelector(".rm-mentions")!.append(heading);
+  });
+  expect(await changes(page)).toBe(1);
+  await page.evaluate(() => {
+    document.querySelector(
+      ".rm-ref-page-view-title span",
+    )!.firstChild!.textContent = "Renamed [[Target]]";
+  });
+  expect(await changes(page)).toBe(2);
+  await page.evaluate(() => {
+    document
+      .querySelector(".rm-ref-page-view-title span")!
+      .replaceChildren("Removed reference");
+  });
+  expect(await changes(page)).toBe(3);
+});

@@ -703,7 +703,37 @@ const initializeExtension = async ({
     }
   };
 
+  let hideReferenceHeading =
+    extensionAPI.settings.get("hide-reference-heading") === true;
+  const savedCollapsed = extensionAPI.settings.get(
+    "collapsed-reference-targets",
+  );
+  const collapsedTargets = new Set<string>(
+    Array.isArray(savedCollapsed)
+      ? savedCollapsed.filter((uid): uid is string => typeof uid === "string")
+      : [],
+  );
+  let preferenceWrite = Promise.resolve();
   const referenceControls = createLinkedReferenceControls({
+    getPreferences: () => ({
+      hideHeading: hideReferenceHeading,
+      collapsedTargets: [...collapsedTargets],
+    }),
+    setCollapsed: (targetUid, collapsed): void => {
+      if (collapsed) collapsedTargets.add(targetUid);
+      else collapsedTargets.delete(targetUid);
+      const value = [...collapsedTargets];
+      preferenceWrite = preferenceWrite
+        .then(() =>
+          extensionAPI.settings.set("collapsed-reference-targets", value),
+        )
+        .catch((error: unknown) => {
+          console.error(
+            "Pinned Blocks could not save the collapsed reference groups",
+            error,
+          );
+        });
+    },
     togglePin: async (pin): Promise<void> => {
       if (isInactive()) return;
       try {
@@ -784,6 +814,25 @@ const initializeExtension = async ({
     await enqueueMutation(reconcileConfigRecords);
     await synchronizeSharedState();
     if (isInactive()) return cleanup;
+
+    extensionAPI.settings.panel.create({
+      tabTitle: "Pinned Blocks",
+      settings: [
+        {
+          id: "hide-reference-heading",
+          name: "Hide pinned references heading",
+          description:
+            "Show pinned references without a heading. The group stays expanded while its heading is hidden.",
+          action: {
+            type: "switch",
+            onChange: (event): void => {
+              hideReferenceHeading = event.target.checked;
+              referenceControls.sync(referencePins);
+            },
+          },
+        },
+      ],
+    });
 
     mutationObserver = observePinStructure({
       root: document.body,

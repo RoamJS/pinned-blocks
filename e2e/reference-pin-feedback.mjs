@@ -10,7 +10,7 @@ const copy = (page, uid) =>
 const nativeRow = (page, uid) =>
   page
     .locator(
-      `.roam-article .rm-ref-page-view .rm-reference-item:has([data-block-uid="${uid}"])`,
+      `.roam-article .rm-ref-page-view:not(.roamjs-reference-pin-page) .rm-reference-item:has([data-block-uid="${uid}"])`,
     )
     .locator("..");
 const closeSettings = (page) =>
@@ -187,6 +187,49 @@ export default {
       });
     }, fixture);
     await copy(page, last).locator(`[data-block-uid="${last}"]`).waitFor();
+    const pinnedGroup = copy(page, last).locator(
+      "xpath=ancestor::*[contains(@class,'roamjs-reference-pin-page')]",
+    );
+    const renderedNode = await copy(page, last)
+      .locator(`[data-block-uid="${last}"]`)
+      .elementHandle();
+    await page.screenshot({ path: outDir + "/block-caret-expanded.png" });
+    await pinnedGroup
+      .getByRole("button", { name: "Collapse pinned reference", exact: true })
+      .click();
+    assert.equal(
+      await copy(page, last).isVisible(),
+      false,
+      "Source caret hides its pinned block",
+    );
+    assert.equal(
+      await pinnedGroup.locator(".rm-ref-page-view-title").isVisible(),
+      true,
+      "Source title remains available",
+    );
+    assert.equal(
+      await copy(page, first).isVisible(),
+      true,
+      "Other pinned references stay expanded",
+    );
+    await page.screenshot({ path: outDir + "/block-caret-collapsed.png" });
+    await pinnedGroup
+      .getByRole("button", { name: "Expand pinned reference", exact: true })
+      .press("Enter");
+    await copy(page, last).waitFor();
+    assert.equal(
+      await renderedNode.evaluate((el) => el.isConnected),
+      true,
+      "Collapse does not remount the native editor",
+    );
+    await pinnedGroup
+      .getByRole("button", { name: "Collapse pinned reference", exact: true })
+      .press("Space");
+    assert.equal(await copy(page, last).isVisible(), false);
+    await pinnedGroup
+      .getByRole("button", { name: "Expand pinned reference", exact: true })
+      .click();
+    await copy(page, last).waitFor();
     const sourceHeading = page
       .locator(
         ".roam-article .rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
@@ -425,6 +468,7 @@ export default {
         "title and block pins remain independent",
         "collapsed source groups preserve expansion controls",
         "source order unchanged",
+        "pinned block source caret collapses independently with mouse and keyboard without remounting",
         "filtered title controls hidden while saved membership survives",
       ],
     };

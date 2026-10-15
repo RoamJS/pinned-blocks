@@ -26,7 +26,7 @@
 
 Hover over a linked reference or focus it with the keyboard to reveal its pin button. Active pins stay visible. Use the pin button beside a linked reference to keep it at the top of that
 page's linked reference results. Click the active pin button to unpin it.
-Pinned results always appear expanded at the top, without a heading, count, or group collapse control.
+Pinned results initially appear expanded at the top, without a section heading or count. Use the caret beside a pinned block’s source-page title to collapse or expand that reference. Collapsing keeps the title visible and the block pinned; the collapsed state lasts while the pinned result remains on screen.
 
 Pinned results show a clickable source page title (Shift-click opens the sidebar) and retain Roam's native block controls. References within page titles can also be pinned using the pin beside their source heading. A pinned title stays separate from pins on individual blocks from that page. Pinned results follow the order in which their pins are saved. The pin button shows a loading state while saving.
 

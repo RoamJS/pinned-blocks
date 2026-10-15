@@ -23,7 +23,6 @@ export const LINKED_REFERENCE_STYLES = `
   .roamjs-reference-pin-row:focus-within > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-title-row:hover > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-title-row:focus-within > .roamjs-reference-pin-control > button { opacity: 1; pointer-events: auto; }
-  .roamjs-reference-pin-source { padding: 4px 8px; font-size: 16px; overflow-wrap: anywhere; }
   .roamjs-reference-pin-page .rm-ref-page-view-title { min-width: 0; overflow-wrap: anywhere; }
   .roamjs-reference-pin-page .rm-caret { cursor: pointer; flex-shrink: 0; }
   .roamjs-reference-pin-title-row { display: flex; align-items: center; }
@@ -123,6 +122,48 @@ const PinButton = ({
     onKeyDown={onKeyDown}
   />
 );
+
+const PinnedBlockGroup = ({
+  title,
+  uid,
+  children,
+}: {
+  title: string;
+  uid?: string;
+  children: React.ReactNode;
+}): React.ReactElement => {
+  const [expanded, setExpanded] = React.useState(true);
+  return (
+    <div className="rm-ref-page-view roamjs-reference-pin-page">
+      <div className="rm-title-arrow-wrapper roamjs-reference-pin-title-row">
+        <Icon
+          icon={expanded ? "caret-down" : "caret-right"}
+          className={`rm-caret ${expanded ? "rm-caret-open" : "rm-caret-closed"} rm-caret-showing`}
+          role="button"
+          tabIndex={0}
+          title={
+            expanded ? "Collapse pinned reference" : "Expand pinned reference"
+          }
+          aria-label={
+            expanded ? "Collapse pinned reference" : "Expand pinned reference"
+          }
+          aria-expanded={expanded}
+          onClick={(): void => setExpanded((previous) => !previous)}
+          onKeyDown={(event): void => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              event.currentTarget.click();
+            }
+          }}
+        />
+        <div className="rm-ref-page-view-title roamjs-reference-pin-source">
+          <SourcePageLink title={title} uid={uid} />
+        </div>
+      </div>
+      <div hidden={!expanded}>{children}</div>
+    </div>
+  );
+};
 
 const NativeBlock = ({
   uid,
@@ -563,13 +604,11 @@ export const createLinkedReferenceControls = ({
                       </div>
                     </div>
                   ) : (
-                    <React.Fragment key={getReferencePinKey(pin)}>
-                      <div className="roamjs-reference-pin-source">
-                        <SourcePageLink
-                          title={pin.sourceTitle}
-                          uid={pin.sourceUid}
-                        />
-                      </div>
+                    <PinnedBlockGroup
+                      key={getReferencePinKey(pin)}
+                      title={pin.sourceTitle}
+                      uid={pin.sourceUid}
+                    >
                       <div
                         className={`${ROW_CLASS} roamjs-reference-pin-active`}
                         data-reference-pin-uid={pin.blockUid}
@@ -594,7 +633,7 @@ export const createLinkedReferenceControls = ({
                           />
                         </span>
                       </div>
-                    </React.Fragment>
+                    </PinnedBlockGroup>
                   ),
                 )}
               </div>

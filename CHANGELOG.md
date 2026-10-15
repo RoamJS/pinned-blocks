@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Added native-style source-page carets to collapse and expand individual pinned block references.
+
 - Removed duplicate source breadcrumbs from pinned blocks and matched pinned pages to native page-reference rows.
 
 - Matched pinned source-page links to the size and opacity of regular linked-reference source titles.

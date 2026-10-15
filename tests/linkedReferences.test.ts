@@ -60,7 +60,9 @@ test("pins render before lazy rows arrive, hide duplicates, and reveal native ro
   expect(await page.evaluate("window.lastZoomPath")).toBe(false);
   await expect(page.locator(".roamjs-reference-pin-heading")).toHaveCount(0);
   await page
-    .locator(".rm-ref-page-view > div:last-child")
+    .locator(
+      ".rm-ref-page-view:not(.roamjs-reference-pin-page) > div:last-child",
+    )
     .evaluate(
       (el, html) => el.insertAdjacentHTML("beforeend", html),
       section("target123").match(
@@ -329,7 +331,7 @@ test("empty main reference lists resolve their target and ignore late results af
     '<div class="roam-article">' + section("target123") + "</div>",
   );
   await page.evaluate(
-    `document.querySelector('.rm-ref-page-view').replaceChildren();window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:async()=> 'target123'};window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])`,
+    `document.querySelector('.rm-ref-page-view:not(.roamjs-reference-pin-page)').replaceChildren();window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:async()=> 'target123'};window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])`,
   );
   await expect(
     page.locator('[data-reference-pin-uid="block1234"]'),
@@ -340,7 +342,7 @@ test("empty main reference lists resolve their target and ignore late results af
     '<div class="roam-article">' + section("target123") + "</div>",
   );
   await page.evaluate(
-    `document.querySelector('.rm-ref-page-view').replaceChildren();window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:()=>new Promise(resolve=>{window.finishTarget=resolve})};window.controls.sync([{targetUid:'target123',blockUid:'block1234'}]);window.controls.cleanup();window.finishTarget('target123')`,
+    `document.querySelector('.rm-ref-page-view:not(.roamjs-reference-pin-page)').replaceChildren();window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:()=>new Promise(resolve=>{window.finishTarget=resolve})};window.controls.sync([{targetUid:'target123',blockUid:'block1234'}]);window.controls.cleanup();window.finishTarget('target123')`,
   );
   await expect(page.locator(".roamjs-reference-pin-panel")).toHaveCount(0);
 });
@@ -359,7 +361,7 @@ test("reused empty main lists invalidate cached pins on navigation", async ({
     page.locator('[data-reference-pin-uid="block1234"]'),
   ).toContainText("Rendered block1234");
   await page.evaluate(
-    `document.querySelector('.rm-ref-page-view').replaceChildren();window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:async()=> 'target456'};window.location.hash='page/target456'`,
+    `document.querySelector('.rm-ref-page-view:not(.roamjs-reference-pin-page)').replaceChildren();window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:async()=> 'target456'};window.location.hash='page/target456'`,
   );
   await expect(
     page.locator('[data-reference-pin-uid="block1234"]'),
@@ -377,7 +379,7 @@ test("navigation starts a fresh target lookup while a previous lookup is pending
     '<div class="roam-article">' + section("target123") + "</div>",
   );
   await page.evaluate(
-    `document.querySelector('.rm-ref-page-view').replaceChildren();window.pins=[{targetUid:'target123',blockUid:'block1234'},{targetUid:'target456',blockUid:'other1234'}];window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:()=>new Promise(resolve=>{window.finishOldTarget=resolve})};window.controls.sync(window.pins);window.location.hash='page/target456';window.roamAlphaAPI.ui.mainWindow.getOpenPageOrBlockUid=async()=> 'target456';window.controls.sync(window.pins)`,
+    `document.querySelector('.rm-ref-page-view:not(.roamjs-reference-pin-page)').replaceChildren();window.pins=[{targetUid:'target123',blockUid:'block1234'},{targetUid:'target456',blockUid:'other1234'}];window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:()=>new Promise(resolve=>{window.finishOldTarget=resolve})};window.controls.sync(window.pins);window.location.hash='page/target456';window.roamAlphaAPI.ui.mainWindow.getOpenPageOrBlockUid=async()=> 'target456';window.controls.sync(window.pins)`,
   );
   await expect(
     page.locator('[data-reference-pin-uid="other1234"]'),
@@ -469,7 +471,7 @@ test("old native rows cannot seed the destination cache before collapsed rows di
     page.getByTestId("row-target123-block1234").getByRole("button"),
   ).toHaveCount(0);
   await page.evaluate(
-    `document.querySelector('.rm-ref-page-view').replaceChildren();window.controls.sync(window.pins)`,
+    `document.querySelector('.rm-ref-page-view:not(.roamjs-reference-pin-page)').replaceChildren();window.controls.sync(window.pins)`,
   );
   await page.waitForTimeout(600);
   await expect(
@@ -518,7 +520,7 @@ test("collapsed daily-note lists resolve enclosing page metadata and follow chan
       "</div>",
   );
   await page.evaluate(
-    `document.querySelectorAll('.rm-ref-page-view').forEach(group=>group.replaceChildren());window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:async()=>null};window.pins=[{targetUid:'10-13-2026',blockUid:'block1234'},{targetUid:'10-12-2026',blockUid:'other1234'},{targetUid:'10-11-2026',blockUid:'third1234'}];window.controls.sync(window.pins)`,
+    `document.querySelectorAll('.rm-ref-page-view:not(.roamjs-reference-pin-page)').forEach(group=>group.replaceChildren());window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:async()=>null};window.pins=[{targetUid:'10-13-2026',blockUid:'block1234'},{targetUid:'10-12-2026',blockUid:'other1234'},{targetUid:'10-11-2026',blockUid:'third1234'}];window.controls.sync(window.pins)`,
   );
   const today = page.getByTestId("daily-10-13-2026");
   const yesterday = page.getByTestId("daily-10-12-2026");
@@ -622,7 +624,7 @@ for (const { label, field, type } of [
       blockUid: "block1234",
     });
     await page.evaluate(
-      `window.pins=window.pins.filter(pin=>pin.targetUid!=='target456');document.querySelector('#right-sidebar .rm-ref-page-view').replaceChildren();window.controls.sync(window.pins)`,
+      `window.pins=window.pins.filter(pin=>pin.targetUid!=='target456');document.querySelector('#right-sidebar .rm-ref-page-view:not(.roamjs-reference-pin-page)').replaceChildren();window.controls.sync(window.pins)`,
     );
     await expect(sidebarPin).toHaveCount(0);
     await expect(mainPin).toBeVisible();
@@ -896,4 +898,50 @@ test("pinned page caret operates the original source group", async ({
   ).toHaveAttribute("aria-expanded", "true");
   expect(await page.evaluate("window.sourceCaretClicks")).toBe(1);
   await expect(copy).toBeVisible();
+});
+
+test("pinned block source caret hides only its copy without remounting or exposing duplicates", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    section("target123") +
+      section("target456", "1 Linked Reference", "other1234"),
+  );
+  await page.evaluate(
+    `window.controls.sync([{targetUid:'target123',blockUid:'block1234'},{targetUid:'target456',blockUid:'other1234'}])`,
+  );
+  const pinned = page.locator('[data-reference-pin-uid="block1234"]');
+  const group = pinned.locator(
+    'xpath=ancestor::*[contains(@class,"roamjs-reference-pin-page")]',
+  );
+  const native = page.getByTestId("row-target123-block1234");
+  await expect(pinned).toContainText("Rendered block1234");
+  await expect(native).toBeHidden();
+  const renders = await page.evaluate("window.renders");
+  await group
+    .getByRole("button", { name: "Collapse pinned reference", exact: true })
+    .click();
+  await expect(pinned).toBeHidden();
+  await expect(group.locator(".roamjs-reference-pin-source")).toBeVisible();
+  await expect(native).toBeHidden();
+  await expect(
+    page.locator('[data-reference-pin-uid="other1234"]'),
+  ).toBeVisible();
+  await page.evaluate(
+    `window.controls.sync([{targetUid:'target123',blockUid:'block1234'},{targetUid:'target456',blockUid:'other1234'}])`,
+  );
+  await expect(pinned).toBeHidden();
+  await group
+    .getByRole("button", { name: "Expand pinned reference", exact: true })
+    .press("Enter");
+  await expect(pinned).toBeVisible();
+  await group
+    .getByRole("button", { name: "Collapse pinned reference", exact: true })
+    .press("Space");
+  await expect(pinned).toBeHidden();
+  expect(await page.evaluate("window.renders")).toBe(renders);
+  expect(await page.evaluate("window.unmounts || 0")).toBe(0);
+  await page.evaluate(`window.controls.sync([])`);
+  await expect(native).toBeVisible();
 });

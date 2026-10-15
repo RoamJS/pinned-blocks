@@ -90,3 +90,88 @@ test("page-title pins require a direct title reference and expose source identit
     else Reflect.deleteProperty(globalThis, "window");
   }
 });
+
+test("title references use one shallow pull without requesting the page outline", () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const patterns: string[] = [];
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      roamAlphaAPI: {
+        data: {
+          pull: (pattern: string) => {
+            patterns.push(pattern);
+            if (pattern.includes(":block/children"))
+              throw new Error("Page outline must not be requested");
+            return {
+              ":block/uid": "title1234",
+              ":node/title": "Topic [[Target]]",
+              ":block/refs": [
+                { ":block/uid": "target123", ":node/title": "Target" },
+              ],
+            };
+          },
+        },
+      },
+    },
+  });
+  try {
+    expect(
+      readReferenceDetails({ targetUid: "target123", blockUid: "title1234" })
+        ?.isPage,
+    ).toBe(true);
+    expect(patterns).toHaveLength(1);
+    expect(patterns[0]).not.toContain(":block/parents");
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "window", previous);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("block references retain recursive descendant membership after the shallow identity probe", () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const patterns: string[] = [];
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      roamAlphaAPI: {
+        data: {
+          pull: (pattern: string) => {
+            patterns.push(pattern);
+            return pattern.includes(":block/children")
+              ? {
+                  ":block/uid": "block1234",
+                  ":block/page": {
+                    ":block/uid": "source123",
+                    ":node/title": "Source",
+                  },
+                  ":block/children": [
+                    {
+                      ":block/refs": [
+                        { ":block/uid": "target123", ":node/title": "Target" },
+                      ],
+                    },
+                  ],
+                }
+              : { ":block/uid": "block1234" };
+          },
+        },
+      },
+    },
+  });
+  try {
+    expect(
+      readReferenceDetails({ targetUid: "target123", blockUid: "block1234" }),
+    ).toEqual({
+      sourceTitle: "Source",
+      sourceUid: "source123",
+      titles: ["Target", "Source"],
+    });
+    expect(patterns).toHaveLength(2);
+    expect(patterns[0]).not.toContain(":block/children");
+    expect(patterns[1]).toContain("{:block/children ...}");
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "window", previous);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});

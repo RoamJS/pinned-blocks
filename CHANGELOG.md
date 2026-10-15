@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Avoided reading entire source-page outlines while displaying title reference pins.
+
 - Added collapsible pinned references and an option to hide their heading while keeping the group expanded.
 - Made pinned source page titles clickable, including Shift-click to open the sidebar.
 - Added pins for linked references that come from page titles.

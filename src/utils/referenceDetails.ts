@@ -34,10 +34,19 @@ export const readReferenceDetails = ({
   targetUid,
   blockUid,
 }: ReferencePin): ReferenceDetails | null => {
-  const block = window.roamAlphaAPI.data.pull(
-    "[:block/uid :node/title :block/string {:block/refs [:block/uid :node/title]} {:block/page [:block/uid :node/title]} {:block/parents [:block/uid :node/title {:block/refs [:block/uid :node/title]}]} {:block/children ...}]",
+  // A page title references only its own tags; pulling its outline is unnecessary.
+  const entity = window.roamAlphaAPI.data.pull(
+    "[:block/uid :node/title {:block/refs [:block/uid :node/title]}]",
     [":block/uid", blockUid],
   ) as Entity | null;
+  if (!entity?.[":block/uid"]) return null;
+  const isPage = typeof entity[":node/title"] === "string";
+  const block = isPage
+    ? entity
+    : (window.roamAlphaAPI.data.pull(
+        "[:block/uid :block/string {:block/refs [:block/uid :node/title]} {:block/page [:block/uid :node/title]} {:block/parents [:block/uid :node/title {:block/refs [:block/uid :node/title]}]} {:block/children ...}]",
+        [":block/uid", blockUid],
+      ) as Entity | null);
   if (!block?.[":block/uid"]) return null;
   const refs = new Set<string>();
   const titles = new Set<string>();
@@ -47,13 +56,12 @@ export const readReferenceDetails = ({
       if (ref[":block/uid"]) refs.add(ref[":block/uid"]);
       if (ref[":node/title"]) titles.add(ref[":node/title"]);
     });
-    if (!block[":node/title"]) entity[":block/children"]?.forEach(visit);
+    if (!isPage) entity[":block/children"]?.forEach(visit);
   };
   visit(block);
   if (!refs.has(targetUid)) return null;
   // Native linked-reference filters include the source page and ancestor context.
   block[":block/parents"]?.forEach(visit);
-  const isPage = Boolean(block[":node/title"]);
   const sourceTitle =
     block[":node/title"] || block[":block/page"]?.[":node/title"] || "";
   const sourceUid = isPage ? blockUid : block[":block/page"]?.[":block/uid"];

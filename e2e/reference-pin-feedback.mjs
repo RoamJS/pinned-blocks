@@ -375,6 +375,7 @@ export default {
       });
     }, fixture);
     await nativeRow(page, fixture.titleBlock).waitFor();
+    await sourceHeading.waitFor({ state: "visible" });
     assert.equal(await sourceHeading.isVisible(), true);
     await page.evaluate(
       (f) =>

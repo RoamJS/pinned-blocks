@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Hid redundant collapsed source headings when every hidden child reference has a rendered pin.
+
 - Kept page-title pin controls in sync with linked-reference filters even before any references are pinned.
 
 - Fixed pinned source-page links opened in a new tab or copied while the main window is on Search or another non-page route.

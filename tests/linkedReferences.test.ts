@@ -894,7 +894,7 @@ test("pinning a title preserves a collapsed source heading with unloaded block r
   const html =
     '<div class="roam-article"><div class="rm-reference-container"><div class="flex-h-box"><strong>2 Linked References</strong></div><div class="rm-mentions"><div class="rm-ref-page-view"><div class="rm-title-arrow-wrapper"><span class="rm-caret-closed"></span><div class="rm-ref-page-view-title">Title [[Target]]</div></div></div></div></div></div>';
   await setup(page, html);
-  await page.evaluate(`window.roamAlphaAPI.ui.mainWindow = {getOpenPageOrBlockUid:async()=> 'target123'};
+  await page.evaluate(`window.roamAlphaAPI.data.fast.q = query => query.includes(':block/page') ? [['block1234']] : [['title1234']]; window.roamAlphaAPI.ui.mainWindow = {getOpenPageOrBlockUid:async()=> 'target123'};
     window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`);
   await expect(
     page.locator('[data-reference-pin-uid="title1234"]'),
@@ -904,6 +904,40 @@ test("pinning a title preserves a collapsed source heading with unloaded block r
       ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
     ),
   ).toBeVisible();
+});
+
+test("collapsed source heading hides once every hidden child has a rendered pin", async ({
+  page,
+}) => {
+  const html =
+    '<div class="roam-article"><div class="rm-reference-container"><div class="flex-h-box"><strong>2 Linked References</strong></div><div class="rm-mentions"><div class="rm-ref-page-view"><div class="rm-title-arrow-wrapper"><span class="rm-caret-closed"></span><div class="rm-ref-page-view-title">Title [[Target]]</div></div></div></div></div></div>';
+  await setup(page, html);
+  await page.evaluate(() => {
+    window.roamAlphaAPI.ui.mainWindow = {
+      getOpenPageOrBlockUid: async () => "target123",
+    };
+    window.roamAlphaAPI.data.fast.q = (query, title) =>
+      query.includes(":node/title") && title === "Title [[Target]]"
+        ? [["title1234"]]
+        : query.includes(":block/page")
+          ? [["block1234"]]
+          : [];
+    window.controls.sync([
+      { targetUid: "target123", blockUid: "title1234" },
+      { targetUid: "target123", blockUid: "block1234" },
+    ]);
+  });
+  const heading = page.locator(
+    ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
+  );
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toContainText("Rendered block1234");
+  await expect(heading).toBeHidden();
+  await page.evaluate(
+    `window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
+  );
+  await expect(heading).toBeVisible();
 });
 
 test("a previously hidden title heading returns when an unpinned child reference appears", async ({
@@ -919,7 +953,7 @@ test("a previously hidden title heading returns when an unpinned child reference
       "</div>",
   );
   await page.evaluate(
-    `window.removedReferenceRow = document.querySelector('[data-testid="row-target123-block1234"]'); window.removedReferenceRow.remove(); window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:async()=> 'target123'}; window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
+    `window.roamAlphaAPI.data.fast.q = query => query.includes(':block/page') ? [['block1234']] : [['title1234']]; window.removedReferenceRow = document.querySelector('[data-testid="row-target123-block1234"]'); window.removedReferenceRow.remove(); window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:async()=> 'target123'}; window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
   );
   await expect(
     page.locator('[data-reference-pin-uid="title1234"]'),

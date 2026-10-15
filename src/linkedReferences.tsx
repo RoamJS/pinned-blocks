@@ -23,7 +23,7 @@ export const LINKED_REFERENCE_STYLES = `
   .roamjs-reference-pin-row:focus-within > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-title-row:hover > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-title-row:focus-within > .roamjs-reference-pin-control > button { opacity: 1; pointer-events: auto; }
-  .roamjs-reference-pin-source { padding: 4px 8px; font-size: 12px; opacity: 0.8; overflow-wrap: anywhere; }
+  .roamjs-reference-pin-source { padding: 4px 8px; font-size: 16px; overflow-wrap: anywhere; }
   .roamjs-reference-pin-title-row { display: flex; align-items: center; }
   .roamjs-reference-pin-title-row > .roamjs-reference-pin-control { display: inline-flex; margin-left: auto; }
   .roamjs-reference-pin-active { margin: 0 4px 8px 12px; }

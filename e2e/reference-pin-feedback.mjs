@@ -251,6 +251,41 @@ export default {
       },
       { uid: fixture.source, close: beforeSidebar === 0 },
     );
+    await page.mouse.move(1000, 650);
+    await page.evaluate(() => document.activeElement?.blur());
+    const sourceAppearance = await page.evaluate(() => {
+      const appearance = (selector) => {
+        const el = document.querySelector(selector);
+        if (!el) throw Error("Missing source-page link: " + selector);
+        const style = getComputedStyle(el);
+        let opacity = 1;
+        for (let current = el; current; current = current.parentElement)
+          opacity *= Number(getComputedStyle(current).opacity);
+        return {
+          fontSize: style.fontSize,
+          fontFamily: style.fontFamily,
+          fontWeight: style.fontWeight,
+          lineHeight: style.lineHeight,
+          color: style.color,
+          opacity,
+        };
+      };
+      return {
+        pinned: appearance(".roam-article .roamjs-reference-pin-source a"),
+        native: appearance(
+          ".roam-article .rm-ref-page-view .rm-ref-page-view-title a",
+        ),
+      };
+    });
+    assert.deepEqual(
+      sourceAppearance.pinned,
+      sourceAppearance.native,
+      "Pinned source links match native reference title typography and opacity",
+    );
+    await fs.writeFile(
+      outDir + "/source-link-appearance.json",
+      JSON.stringify(sourceAppearance, null, 2),
+    );
     assert.equal(
       await page.locator(".roamjs-reference-pin-heading").count(),
       0,
@@ -364,6 +399,7 @@ export default {
         "120 references with unloaded saved pin",
         "page-title-only pin/unpin",
         "native inline and source page links, including Shift-click sidebar",
+        "source links match native typography and opacity",
         "pins always visible without heading or group collapse control",
         "pins stay visible after native extension reload",
         "title and block pins remain independent",

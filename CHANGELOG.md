@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Matched pinned source-page links to the size and opacity of regular linked-reference source titles.
+
 - Removed the pinned-reference heading and group collapse control so pinned references always stay visible.
 
 - Hid pin controls for filtered-out title references without removing their saved pins.

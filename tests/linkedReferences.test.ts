@@ -889,6 +889,10 @@ test("pinned page caret operates the original source group", async ({
     exact: true,
   });
   await expect(expand).toHaveAttribute("aria-expanded", "false");
+  await expect(expand.locator("svg")).toHaveAttribute(
+    "data-icon",
+    "caret-down",
+  );
   await expand.press("Enter");
   await expect(
     copy.getByRole("button", {
@@ -923,6 +927,11 @@ test("pinned block source caret hides only its copy without remounting or exposi
     .getByRole("button", { name: "Collapse pinned reference", exact: true })
     .click();
   await expect(pinned).toBeHidden();
+  await expect(
+    group
+      .getByRole("button", { name: "Expand pinned reference", exact: true })
+      .locator("svg"),
+  ).toHaveAttribute("data-icon", "caret-down");
   await expect(group.locator(".roamjs-reference-pin-source")).toBeVisible();
   await expect(native).toBeHidden();
   await expect(

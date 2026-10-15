@@ -137,7 +137,7 @@ const PinnedBlockGroup = ({
     <div className="rm-ref-page-view roamjs-reference-pin-page">
       <div className="rm-title-arrow-wrapper roamjs-reference-pin-title-row">
         <Icon
-          icon={expanded ? "caret-down" : "caret-right"}
+          icon="caret-down"
           className={`rm-caret ${expanded ? "rm-caret-open" : "rm-caret-closed"} rm-caret-showing`}
           role="button"
           tabIndex={0}
@@ -555,7 +555,7 @@ export const createLinkedReferenceControls = ({
                     >
                       <div className="rm-title-arrow-wrapper roamjs-reference-pin-title-row">
                         <Icon
-                          icon={pin.pageExpanded ? "caret-down" : "caret-right"}
+                          icon="caret-down"
                           className={`rm-caret ${pin.pageExpanded ? "rm-caret-open" : "rm-caret-closed"} rm-caret-showing`}
                           role="button"
                           tabIndex={pin.pageExpandable ? 0 : -1}

@@ -472,14 +472,6 @@ export const createLinkedReferenceControls = ({
           )[0]?.[0] as string | undefined;
           if (!source) return;
           pageHeadings.set(source, heading);
-          const pin = { targetUid, blockUid: source };
-          const detail = readReference(pin);
-          if (
-            !detail?.isPage ||
-            !matchesReferenceFilters({ titles: detail.titles, filters })
-          )
-            return;
-          rows.push({ row: heading, pin });
           if (heading.querySelector(".rm-caret-closed")) {
             const hiddenBlockUids = window.roamAlphaAPI.data.fast
               .q(
@@ -491,6 +483,14 @@ export const createLinkedReferenceControls = ({
             if (hiddenBlockUids.length)
               hiddenBlockUidsByHeading.set(heading, hiddenBlockUids);
           }
+          const pin = { targetUid, blockUid: source };
+          const detail = readReference(pin);
+          if (
+            !detail?.isPage ||
+            !matchesReferenceFilters({ titles: detail.titles, filters })
+          )
+            return;
+          rows.push({ row: heading, pin });
         });
       const entries: PinnedEntry[] = pins
         .filter((pin) => pin.targetUid === targetUid)
@@ -667,17 +667,54 @@ export const createLinkedReferenceControls = ({
       const hasActiveFilters = filters.some(({ includes, removes }) =>
         Boolean(includes?.length || removes?.length),
       );
-      const hasUnpinnedHiddenBlocks = (heading: HTMLElement): boolean =>
-        (hiddenBlockUidsByHeading.get(heading) || []).some((blockUid) => {
+      const renderedBlockUids = new Set(
+        entries
+          .filter((entry) => !entry.isPage && hasRenderedCopy(entry))
+          .map(({ blockUid }) => blockUid),
+      );
+      const hiddenStatusByHeading = new Map<
+        HTMLElement,
+        { hasUnpinned: boolean; hasCovered: boolean }
+      >();
+      const getHiddenStatus = (
+        heading: HTMLElement,
+      ): { hasUnpinned: boolean; hasCovered: boolean } => {
+        const cached = hiddenStatusByHeading.get(heading);
+        if (cached) return cached;
+        const status = { hasUnpinned: false, hasCovered: false };
+        (hiddenBlockUidsByHeading.get(heading) || []).forEach((blockUid) => {
           const pin = { targetUid, blockUid };
-          if (hasRenderedCopy(pin)) return false;
-          if (!hasActiveFilters) return true;
+          let covered = hasRenderedCopy(pin);
+          if (!covered && renderedBlockUids.size) {
+            covered = window.roamAlphaAPI.data.fast
+              .q(
+                "[:find ?parentUid :in $ ?uid :where [?b :block/uid ?uid] [?b :block/parents ?p] [?p :block/uid ?parentUid]]",
+                blockUid,
+              )
+              .some(
+                ([ancestorUid]) =>
+                  typeof ancestorUid === "string" &&
+                  renderedBlockUids.has(ancestorUid),
+              );
+          }
+          if (covered) {
+            status.hasCovered = true;
+            return;
+          }
+          if (!hasActiveFilters) {
+            status.hasUnpinned = true;
+            return;
+          }
           const detail = readReference(pin);
-          return (
+          if (
             !detail ||
             matchesReferenceFilters({ titles: detail.titles, filters })
-          );
+          )
+            status.hasUnpinned = true;
         });
+        hiddenStatusByHeading.set(heading, status);
+        return status;
+      };
       rows.forEach(({ row, pin }) => {
         activeRows.add(row);
         const isTitle = row.classList.contains("rm-title-arrow-wrapper");
@@ -690,7 +727,7 @@ export const createLinkedReferenceControls = ({
         const group = row.closest(".rm-ref-page-view");
         const hasUnpinnedBlocks =
           isTitle &&
-          (hasUnpinnedHiddenBlocks(row) ||
+          (getHiddenStatus(row).hasUnpinned ||
             rows.some(
               (entry) =>
                 entry.row !== row &&
@@ -731,7 +768,9 @@ export const createLinkedReferenceControls = ({
         }
       });
       const groups = new Set(
-        rows.map(({ row }) => row.closest<HTMLElement>(".rm-ref-page-view")),
+        [...rows.map(({ row }) => row), ...hiddenBlockUidsByHeading.keys()].map(
+          (row) => row.closest<HTMLElement>(".rm-ref-page-view"),
+        ),
       );
       groups.forEach((group) => {
         if (!group) return;
@@ -741,9 +780,12 @@ export const createLinkedReferenceControls = ({
         const heading = group.querySelector<HTMLElement>(
           ":scope > .rm-title-arrow-wrapper",
         );
+        const hiddenStatus = heading && getHiddenStatus(heading);
         if (
           heading &&
-          !hasUnpinnedHiddenBlocks(heading) &&
+          (hiddenStatus?.hasCovered ||
+            groupRows.some(({ pin }) => hasRenderedCopy(pin))) &&
+          !hiddenStatus?.hasUnpinned &&
           groupRows.every(({ pin }) => hasRenderedCopy(pin))
         )
           decorate(heading, EMPTY_HEADING_CLASS, activeDecorations);

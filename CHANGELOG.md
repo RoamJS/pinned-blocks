@@ -2,7 +2,7 @@
 
 ## 1.0.0
 
-- Hid redundant collapsed source headings when every matching child reference has a rendered pin or is filtered out.
+- Hid redundant collapsed source headings when matching child references are rendered by direct or ancestor pins, or filtered out, including source pages whose titles are not references.
 
 - Kept page-title pin controls in sync with linked-reference filters even before any references are pinned.
 

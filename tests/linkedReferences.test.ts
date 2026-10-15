@@ -972,6 +972,66 @@ test("filtered hidden child does not keep a pinned title's collapsed heading vis
   await expect(heading).toBeVisible();
 });
 
+test("collapsed ordinary source heading hides when its only reference is pinned", async ({
+  page,
+}) => {
+  const html =
+    '<div class="roam-article"><div class="rm-reference-container"><div class="flex-h-box"><strong>1 Linked Reference</strong></div><div class="rm-mentions"><div class="rm-ref-page-view"><div class="rm-title-arrow-wrapper"><span class="rm-caret-closed"></span><div class="rm-ref-page-view-title">Source page</div></div></div></div></div></div>';
+  await setup(page, html);
+  await page.evaluate(() => {
+    window.roamAlphaAPI.ui.mainWindow = {
+      getOpenPageOrBlockUid: async () => "target123",
+    };
+    window.roamAlphaAPI.data.fast.q = (query, title) =>
+      query.includes(":node/title") && title === "Source page"
+        ? [["source123"]]
+        : query.includes(":block/page")
+          ? [["block1234"]]
+          : [];
+    window.controls.sync([{ targetUid: "target123", blockUid: "block1234" }]);
+  });
+  const heading = page.locator(
+    ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
+  );
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toContainText("Rendered block1234");
+  await expect(heading).toBeHidden();
+  await page.evaluate("window.controls.sync([])");
+  await expect(heading).toBeVisible();
+});
+
+test("rendered ancestor pin covers a hidden descendant reference", async ({
+  page,
+}) => {
+  const html =
+    '<div class="roam-article"><div class="rm-reference-container"><div class="flex-h-box"><strong>1 Linked Reference</strong></div><div class="rm-mentions"><div class="rm-ref-page-view"><div class="rm-title-arrow-wrapper"><span class="rm-caret-closed"></span><div class="rm-ref-page-view-title">Source page</div></div></div></div></div></div>';
+  await setup(page, html);
+  await page.evaluate(() => {
+    window.roamAlphaAPI.ui.mainWindow = {
+      getOpenPageOrBlockUid: async () => "target123",
+    };
+    window.roamAlphaAPI.data.fast.q = (query, title) =>
+      query.includes(":node/title") && title === "Source page"
+        ? [["source123"]]
+        : query.includes(":block/parents")
+          ? [["source123"], ["block1234"]]
+          : query.includes(":block/page")
+            ? [["child1234"]]
+            : [];
+    window.controls.sync([{ targetUid: "target123", blockUid: "block1234" }]);
+  });
+  const heading = page.locator(
+    ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
+  );
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toContainText("Rendered block1234");
+  await expect(heading).toBeHidden();
+  await page.evaluate("window.controls.sync([])");
+  await expect(heading).toBeVisible();
+});
+
 test("a previously hidden title heading returns when an unpinned child reference appears", async ({
   page,
 }) => {

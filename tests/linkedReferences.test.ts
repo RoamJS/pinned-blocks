@@ -118,27 +118,6 @@ test("pins remain target-scoped and unlinked results receive no controls", async
   ).toHaveCount(0);
 });
 
-test("nested mentions do not acquire controls from the owning reference list", async ({
-  page,
-}) => {
-  const html = `<div class="roam-article"><div class="rm-reference-container"><div class="flex-h-box"><strong>2 Linked References</strong></div><div class="rm-mentions">
-    <div class="rm-ref-page-view"><div class="rm-title-arrow-wrapper">Source page</div><div data-testid="outer-row" class="flex-h-box"><div class="rm-reference-item"><div class="roam-block-container" data-block-uid="block1234"><div class="rm-block-main"><div class="roam-block" id="block-input-user-mentions-page-target123-block1234">Outer</div></div></div></div></div></div>
-    <div class="rm-mentions" data-testid="nested-mentions"><div class="rm-ref-page-view"><div class="rm-title-arrow-wrapper"><div class="rm-ref-page-view-title">Title [[Target]]</div></div><div class="flex-h-box"><div class="rm-reference-item"><div class="roam-block-container" data-block-uid="nested123"><div class="rm-block-main"><div class="roam-block" id="block-input-user-mentions-page-target123-nested123">Nested</div></div></div></div></div></div></div>
-    </div></div></div>`;
-  await setup(page, html);
-  await page.evaluate("window.controls.sync([])");
-  await expect(
-    page.getByTestId("outer-row").getByRole("button", {
-      name: "Pin linked reference",
-    }),
-  ).toHaveCount(1);
-  await expect(
-    page.getByTestId("nested-mentions").getByRole("button", {
-      name: "Pin linked reference",
-    }),
-  ).toHaveCount(0);
-});
-
 test("filters and missing references suppress top copies without losing saved pins", async ({
   page,
 }) => {

@@ -4,8 +4,6 @@
 
 - Hid redundant collapsed source headings when matching child references are rendered by direct or ancestor pins, or filtered out, including source pages whose titles are not references.
 
-- Scoped linked-reference controls and headings to their own results list, including when a reference embeds another mentions view.
-
 - Kept page-title pin controls in sync with linked-reference filters even before any references are pinned.
 
 - Fixed pinned source-page links opened in a new tab or copied while the main window is on Search or another non-page route.

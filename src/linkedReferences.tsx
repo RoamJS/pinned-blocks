@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom";
-import { Button } from "@blueprintjs/core";
+import { Button, Icon } from "@blueprintjs/core";
 import {
   getReferencePinKey,
   getReferenceTargetUid,
@@ -20,9 +20,13 @@ export const LINKED_REFERENCE_STYLES = `
   .roamjs-reference-pin-control > button { grid-column: 2; }
   .roamjs-reference-pin-control > button[aria-pressed="false"][aria-busy="false"] { opacity: 0; pointer-events: none; }
   .roamjs-reference-pin-row:hover > .roamjs-reference-pin-control > button,
-  .roamjs-reference-pin-row:focus-within > .roamjs-reference-pin-control > button { opacity: 1; pointer-events: auto; }
-  .roamjs-reference-pin-source { padding: 4px 8px; font-size: 12px; opacity: 0.8; overflow-wrap: anywhere; }
-  .roamjs-reference-pin-heading { padding: 8px 12px; font-size: 12px; font-weight: 600; }
+  .roamjs-reference-pin-row:focus-within > .roamjs-reference-pin-control > button,
+  .roamjs-reference-pin-title-row:hover > .roamjs-reference-pin-control > button,
+  .roamjs-reference-pin-title-row:focus-within > .roamjs-reference-pin-control > button { opacity: 1; pointer-events: auto; }
+  .roamjs-reference-pin-page .rm-ref-page-view-title { min-width: 0; overflow-wrap: anywhere; }
+  .roamjs-reference-pin-page .rm-caret { cursor: pointer; flex-shrink: 0; }
+  .roamjs-reference-pin-title-row { display: flex; align-items: center; }
+  .roamjs-reference-pin-title-row > .roamjs-reference-pin-control { display: inline-flex; margin-left: auto; }
   .roamjs-reference-pin-active { margin: 0 4px 8px 12px; }
   .roamjs-reference-pin-active > .rm-reference-item { background: var(--roamjs-reference-pin-background, rgba(137, 160, 179, 0.08)); }
   .roamjs-reference-pin-duplicate, .roamjs-reference-pin-empty-heading { display: none !important; }
@@ -38,6 +42,7 @@ type MountedPanel = {
   signature: string;
   renderedKeys: Set<string>;
   onRendered: (key: string) => void;
+  pageHeadings: Map<string, HTMLElement>;
 };
 type RenderBlock = (args: {
   uid: string;
@@ -45,7 +50,53 @@ type RenderBlock = (args: {
   "zoom-path?": boolean;
 }) => Promise<unknown>;
 type UnmountBlock = (args: { el: HTMLElement }) => Promise<unknown>;
-type PinnedEntry = ReferencePin & ReferenceDetails;
+type PinnedEntry = ReferencePin &
+  ReferenceDetails & { pageExpanded?: boolean; pageExpandable?: boolean };
+const getSourcePageHref = (uid: string): string => {
+  const url = new URL(window.location.href);
+  const graphRoot = url.hash.match(/^#\/(?:app|offline)\/[^/?#]+/)?.[0];
+  if (!graphRoot) return url.href;
+  url.hash = `${graphRoot}/page/${encodeURIComponent(uid)}`;
+  return url.href;
+};
+
+const SourcePageLink = ({
+  title,
+  uid,
+}: {
+  title: string;
+  uid?: string;
+}): React.ReactElement =>
+  uid ? (
+    <a
+      className="rm-page-ref"
+      href={getSourcePageHref(uid)}
+      onClick={(event): void => {
+        if (
+          event.metaKey ||
+          event.ctrlKey ||
+          event.altKey ||
+          event.button !== 0
+        )
+          return;
+        event.preventDefault();
+        if (event.shiftKey) {
+          // Installed types use page-uid, but Roam requires block-uid for all window types.
+          const addWindow = window.roamAlphaAPI.ui.rightSidebar
+            .addWindow as unknown as (args: {
+            window: { type: "outline"; "block-uid": string };
+          }) => Promise<void>;
+          void addWindow({ window: { type: "outline", "block-uid": uid } });
+        } else {
+          void window.roamAlphaAPI.ui.mainWindow.openPage({ page: { uid } });
+        }
+      }}
+    >
+      {title}
+    </a>
+  ) : (
+    <>{title}</>
+  );
 
 const PinButton = ({
   pinned,
@@ -80,6 +131,48 @@ const PinButton = ({
   />
 );
 
+const PinnedBlockGroup = ({
+  title,
+  uid,
+  children,
+}: {
+  title: string;
+  uid?: string;
+  children: React.ReactNode;
+}): React.ReactElement => {
+  const [expanded, setExpanded] = React.useState(true);
+  return (
+    <div className="rm-ref-page-view roamjs-reference-pin-page">
+      <div className="rm-title-arrow-wrapper roamjs-reference-pin-title-row">
+        <Icon
+          icon="caret-down"
+          className={`rm-caret ${expanded ? "rm-caret-open" : "rm-caret-closed"} rm-caret-showing`}
+          role="button"
+          tabIndex={0}
+          title={
+            expanded ? "Collapse pinned reference" : "Expand pinned reference"
+          }
+          aria-label={
+            expanded ? "Collapse pinned reference" : "Expand pinned reference"
+          }
+          aria-expanded={expanded}
+          onClick={(): void => setExpanded((previous) => !previous)}
+          onKeyDown={(event): void => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              event.currentTarget.click();
+            }
+          }}
+        />
+        <div className="rm-ref-page-view-title roamjs-reference-pin-source">
+          <SourcePageLink title={title} uid={uid} />
+        </div>
+      </div>
+      <div hidden={!expanded}>{children}</div>
+    </div>
+  );
+};
+
 const NativeBlock = ({
   uid,
   pinKey,
@@ -103,7 +196,7 @@ const NativeBlock = ({
     let disposed = false;
     void unmounting.current
       .then(() => {
-        if (!disposed) return renderBlock({ uid, el, "zoom-path?": true });
+        if (!disposed) return renderBlock({ uid, el, "zoom-path?": false });
       })
       .then(() => {
         if (disposed) {
@@ -358,14 +451,71 @@ export const createLinkedReferenceControls = ({
       }
       targets.set(list, targetUid);
       const rows = nativeRows.filter(({ pin }) => pin.targetUid === targetUid);
+      const hiddenBlockUidsByHeading = new Map<HTMLElement, string[]>();
+      const pageHeadings = new Map<string, HTMLElement>();
       const filters = getFilters(list, targetUid);
+      // A page title can itself reference the target, even when it has no block rows.
+      list
+        .querySelectorAll<HTMLElement>(".rm-ref-page-view")
+        .forEach((group) => {
+          if (group.closest(`.${PANEL_CLASS}`)) return;
+          const heading = group.querySelector<HTMLElement>(
+            ":scope > .rm-title-arrow-wrapper",
+          );
+          const title = heading
+            ?.querySelector<HTMLElement>(".rm-ref-page-view-title")
+            ?.textContent?.trim();
+          if (!heading || !title) return;
+          const source = window.roamAlphaAPI.data.fast.q(
+            "[:find ?uid :in $ ?title :where [?p :node/title ?title] [?p :block/uid ?uid]]",
+            title,
+          )[0]?.[0] as string | undefined;
+          if (!source) return;
+          pageHeadings.set(source, heading);
+          if (heading.querySelector(".rm-caret-closed")) {
+            const hiddenBlockUids = window.roamAlphaAPI.data.fast
+              .q(
+                "[:find ?uid :in $ ?source ?target :where [?p :block/uid ?source] [?b :block/page ?p] [?b :block/uid ?uid] [?b :block/refs ?ref] [?ref :block/uid ?target]]",
+                source,
+                targetUid,
+              )
+              .map(([uid]) => uid as string);
+            if (hiddenBlockUids.length)
+              hiddenBlockUidsByHeading.set(heading, hiddenBlockUids);
+          }
+          const pin = { targetUid, blockUid: source };
+          const detail = readReference(pin);
+          if (
+            !detail?.isPage ||
+            !matchesReferenceFilters({ titles: detail.titles, filters })
+          )
+            return;
+          rows.push({ row: heading, pin });
+        });
       const entries: PinnedEntry[] = pins
         .filter((pin) => pin.targetUid === targetUid)
         .flatMap((pin) => {
           const detail = readReference(pin);
           return detail &&
             matchesReferenceFilters({ titles: detail.titles, filters })
-            ? [{ ...pin, ...detail }]
+            ? [
+                {
+                  ...pin,
+                  ...detail,
+                  ...(detail.isPage
+                    ? {
+                        pageExpandable: Boolean(
+                          pageHeadings
+                            .get(pin.blockUid)
+                            ?.querySelector(".rm-caret"),
+                        ),
+                        pageExpanded: !pageHeadings
+                          .get(pin.blockUid)
+                          ?.querySelector(".rm-caret-closed"),
+                      }
+                    : {}),
+                },
+              ]
             : [];
         });
       const shownKeys = new Set(entries.map(getReferencePinKey));
@@ -381,6 +531,7 @@ export const createLinkedReferenceControls = ({
             mount,
             signature: "",
             renderedKeys: new Set(),
+            pageHeadings,
             onRendered: (key): void => {
               if (inactive || panels.get(list) !== mountedPanel) return;
               mountedPanel.renderedKeys.add(key);
@@ -390,57 +541,112 @@ export const createLinkedReferenceControls = ({
           panel = mountedPanel;
           panels.set(list, panel);
         }
+        panel.pageHeadings = pageHeadings;
         panel.renderedKeys.forEach((key) => {
           if (!shownKeys.has(key)) panel.renderedKeys.delete(key);
         });
-        const signature = JSON.stringify(
+        const signature = JSON.stringify([
           entries.map((entry) => [
             entry,
             pendingKeys.has(getReferencePinKey(entry)),
           ]),
-        );
+        ]);
         if (panel.signature !== signature) {
           panel.signature = signature;
           ReactDOM.render(
             <>
-              <div
-                className="roamjs-reference-pin-heading"
-                role="heading"
-                aria-level={3}
-              >
-                Pinned references ({entries.length})
-              </div>
-              {entries.map((pin) => (
-                <React.Fragment key={getReferencePinKey(pin)}>
-                  <div className="roamjs-reference-pin-source">
-                    {pin.sourceTitle}
-                  </div>
-                  <div
-                    className={`${ROW_CLASS} roamjs-reference-pin-active`}
-                    data-reference-pin-uid={pin.blockUid}
-                  >
-                    <div className="rm-reference-item">
-                      <NativeBlock
-                        uid={pin.blockUid}
-                        pinKey={getReferencePinKey(pin)}
-                        onRendered={panel.onRendered}
-                        renderBlock={renderBlock}
-                        unmountBlock={unmountBlock}
-                      />
+              <div className="roamjs-reference-pin-content">
+                {entries.map((pin) =>
+                  pin.isPage ? (
+                    <div
+                      key={getReferencePinKey(pin)}
+                      className="rm-ref-page-view roamjs-reference-pin-page"
+                      data-reference-pin-uid={pin.blockUid}
+                    >
+                      <div className="rm-title-arrow-wrapper roamjs-reference-pin-title-row">
+                        <Icon
+                          icon="caret-down"
+                          className={`rm-caret ${pin.pageExpanded ? "rm-caret-open" : "rm-caret-closed"} rm-caret-showing`}
+                          role="button"
+                          tabIndex={pin.pageExpandable ? 0 : -1}
+                          aria-disabled={!pin.pageExpandable}
+                          title={
+                            pin.pageExpanded
+                              ? "Collapse source references"
+                              : "Expand source references"
+                          }
+                          aria-label={
+                            pin.pageExpanded
+                              ? "Collapse source references"
+                              : "Expand source references"
+                          }
+                          aria-expanded={pin.pageExpanded}
+                          onClick={(): void => {
+                            panel.pageHeadings
+                              .get(pin.blockUid)
+                              ?.querySelector<HTMLElement>(".rm-caret")
+                              ?.click();
+                            sync(latestPins);
+                          }}
+                          onKeyDown={(event): void => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              event.currentTarget.click();
+                            }
+                          }}
+                        />
+                        <div className="rm-ref-page-view-title">
+                          <SourcePageLink
+                            title={pin.sourceTitle}
+                            uid={pin.sourceUid}
+                          />
+                        </div>
+                        <span className={CONTROL_CLASS}>
+                          <PinButton
+                            pinned
+                            pending={pendingKeys.has(getReferencePinKey(pin))}
+                            onClick={(): void => {
+                              void runToggle(pin);
+                            }}
+                            onKeyDown={navigateControls}
+                          />
+                        </span>
+                      </div>
                     </div>
-                    <span className={CONTROL_CLASS}>
-                      <PinButton
-                        pinned
-                        pending={pendingKeys.has(getReferencePinKey(pin))}
-                        onClick={(): void => {
-                          void runToggle(pin);
-                        }}
-                        onKeyDown={navigateControls}
-                      />
-                    </span>
-                  </div>
-                </React.Fragment>
-              ))}
+                  ) : (
+                    <PinnedBlockGroup
+                      key={getReferencePinKey(pin)}
+                      title={pin.sourceTitle}
+                      uid={pin.sourceUid}
+                    >
+                      <div
+                        className={`${ROW_CLASS} roamjs-reference-pin-active`}
+                        data-reference-pin-uid={pin.blockUid}
+                      >
+                        <div className="rm-reference-item">
+                          <NativeBlock
+                            uid={pin.blockUid}
+                            pinKey={getReferencePinKey(pin)}
+                            onRendered={panel.onRendered}
+                            renderBlock={renderBlock}
+                            unmountBlock={unmountBlock}
+                          />
+                        </div>
+                        <span className={CONTROL_CLASS}>
+                          <PinButton
+                            pinned
+                            pending={pendingKeys.has(getReferencePinKey(pin))}
+                            onClick={(): void => {
+                              void runToggle(pin);
+                            }}
+                            onKeyDown={navigateControls}
+                          />
+                        </span>
+                      </div>
+                    </PinnedBlockGroup>
+                  ),
+                )}
+              </div>
             </>,
             panel.mount,
           );
@@ -449,12 +655,89 @@ export const createLinkedReferenceControls = ({
       const renderedKeys = panels.get(list)?.renderedKeys;
       const hasRenderedCopy = (pin: ReferencePin): boolean => {
         const key = getReferencePinKey(pin);
-        return shownKeys.has(key) && Boolean(renderedKeys?.has(key));
+        return (
+          shownKeys.has(key) &&
+          (Boolean(renderedKeys?.has(key)) ||
+            Boolean(
+              entries.find((entry) => getReferencePinKey(entry) === key)
+                ?.isPage,
+            ))
+        );
+      };
+      const hasActiveFilters = filters.some(({ includes, removes }) =>
+        Boolean(includes?.length || removes?.length),
+      );
+      const renderedBlockUids = new Set(
+        entries
+          .filter((entry) => !entry.isPage && hasRenderedCopy(entry))
+          .map(({ blockUid }) => blockUid),
+      );
+      const hiddenStatusByHeading = new Map<
+        HTMLElement,
+        { hasUnpinned: boolean; hasCovered: boolean }
+      >();
+      const getHiddenStatus = (
+        heading: HTMLElement,
+      ): { hasUnpinned: boolean; hasCovered: boolean } => {
+        const cached = hiddenStatusByHeading.get(heading);
+        if (cached) return cached;
+        const status = { hasUnpinned: false, hasCovered: false };
+        (hiddenBlockUidsByHeading.get(heading) || []).forEach((blockUid) => {
+          const pin = { targetUid, blockUid };
+          let covered = hasRenderedCopy(pin);
+          if (!covered && renderedBlockUids.size) {
+            covered = window.roamAlphaAPI.data.fast
+              .q(
+                "[:find ?parentUid :in $ ?uid :where [?b :block/uid ?uid] [?b :block/parents ?p] [?p :block/uid ?parentUid]]",
+                blockUid,
+              )
+              .some(
+                ([ancestorUid]) =>
+                  typeof ancestorUid === "string" &&
+                  renderedBlockUids.has(ancestorUid),
+              );
+          }
+          if (covered) {
+            status.hasCovered = true;
+            return;
+          }
+          if (!hasActiveFilters) {
+            status.hasUnpinned = true;
+            return;
+          }
+          const detail = readReference(pin);
+          if (
+            !detail ||
+            matchesReferenceFilters({ titles: detail.titles, filters })
+          )
+            status.hasUnpinned = true;
+        });
+        hiddenStatusByHeading.set(heading, status);
+        return status;
       };
       rows.forEach(({ row, pin }) => {
         activeRows.add(row);
-        decorate(row, ROW_CLASS, activeDecorations);
-        row.classList.toggle(DUPLICATE_CLASS, hasRenderedCopy(pin));
+        const isTitle = row.classList.contains("rm-title-arrow-wrapper");
+        decorate(
+          row,
+          isTitle ? "roamjs-reference-pin-title-row" : ROW_CLASS,
+          activeDecorations,
+        );
+        // Keep a source heading when unpinned block results still need its context.
+        const group = row.closest(".rm-ref-page-view");
+        const hasUnpinnedBlocks =
+          isTitle &&
+          (getHiddenStatus(row).hasUnpinned ||
+            rows.some(
+              (entry) =>
+                entry.row !== row &&
+                entry.row.closest(".rm-ref-page-view") === group &&
+                !hasRenderedCopy(entry.pin),
+            ));
+        row.classList.toggle(
+          DUPLICATE_CLASS,
+          hasRenderedCopy(pin) && !hasUnpinnedBlocks,
+        );
         let control = controls.get(row);
         if (!control || !row.contains(control.mount)) {
           if (control) removeControl(row, control);
@@ -485,7 +768,9 @@ export const createLinkedReferenceControls = ({
         }
       });
       const groups = new Set(
-        rows.map(({ row }) => row.closest<HTMLElement>(".rm-ref-page-view")),
+        [...rows.map(({ row }) => row), ...hiddenBlockUidsByHeading.keys()].map(
+          (row) => row.closest<HTMLElement>(".rm-ref-page-view"),
+        ),
       );
       groups.forEach((group) => {
         if (!group) return;
@@ -495,8 +780,16 @@ export const createLinkedReferenceControls = ({
         const heading = group.querySelector<HTMLElement>(
           ":scope > .rm-title-arrow-wrapper",
         );
-        if (heading && groupRows.every(({ pin }) => hasRenderedCopy(pin)))
+        const hiddenStatus = heading && getHiddenStatus(heading);
+        if (
+          heading &&
+          (hiddenStatus?.hasCovered ||
+            groupRows.some(({ pin }) => hasRenderedCopy(pin))) &&
+          !hiddenStatus?.hasUnpinned &&
+          groupRows.every(({ pin }) => hasRenderedCopy(pin))
+        )
           decorate(heading, EMPTY_HEADING_CLASS, activeDecorations);
+        else heading?.classList.remove(EMPTY_HEADING_CLASS);
       });
     });
     controls.forEach((control, row) => {
@@ -509,6 +802,7 @@ export const createLinkedReferenceControls = ({
       if (!activeDecorations.has(element)) {
         element.classList.remove(
           ROW_CLASS,
+          "roamjs-reference-pin-title-row",
           DUPLICATE_CLASS,
           EMPTY_HEADING_CLASS,
         );
@@ -519,7 +813,7 @@ export const createLinkedReferenceControls = ({
   let filterSnapshot = "";
   // Roam can change filters without changing any currently loaded result rows.
   const filterPoll = window.setInterval(() => {
-    if (inactive || !latestPins.length) return;
+    if (inactive) return;
     const snapshot = JSON.stringify([
       window.location.href,
       Array.from(
@@ -543,6 +837,7 @@ export const createLinkedReferenceControls = ({
       decorated.forEach((element) =>
         element.classList.remove(
           ROW_CLASS,
+          "roamjs-reference-pin-title-row",
           DUPLICATE_CLASS,
           EMPTY_HEADING_CLASS,
         ),

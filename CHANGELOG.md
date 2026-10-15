@@ -2,6 +2,29 @@
 
 ## 1.0.0
 
+- Hid redundant collapsed source headings when matching child references are rendered by direct or ancestor pins, or filtered out, including source pages whose titles are not references.
+
+- Kept page-title pin controls in sync with linked-reference filters even before any references are pinned.
+
+- Fixed pinned source-page links opened in a new tab or copied while the main window is on Search or another non-page route.
+
+- Added native-style source-page carets to collapse and expand individual pinned block references.
+
+- Removed duplicate source breadcrumbs from pinned blocks and matched pinned pages to native page-reference rows.
+
+- Matched pinned source-page links to the size and opacity of regular linked-reference source titles.
+
+- Removed the pinned-reference heading and group collapse control so pinned references always stay visible.
+
+- Hid pin controls for filtered-out title references without removing their saved pins.
+
+- Fixed Shift-click on pinned source labels opening pages in the sidebar.
+
+- Avoided reading entire source-page outlines while displaying title reference pins.
+
+- Made pinned source page titles clickable, including Shift-click to open the sidebar.
+- Added pins for linked references that come from page titles.
+
 - Fixed unnecessary pin refreshes during ordinary typing; reference rows, navigation, and reference-tag changes still refresh pins.
 
 - Fixed sidebar navigation retaining the previous target’s pins and unpin controls while old reference rows remain visible.

@@ -125,3 +125,47 @@ test("disconnect prevents refreshes after unload", async ({ page }) => {
   });
   expect(await changes(page)).toBe(0);
 });
+
+test("renaming a native source heading refreshes page-title references", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.evaluate(() => {
+    const heading = document.createElement("div");
+    heading.className = "rm-title-arrow-wrapper";
+    heading.innerHTML =
+      '<div class="rm-ref-page-view-title"><a><span>Source [[Target]]</span></a></div>';
+    document.querySelector(".rm-mentions")!.append(heading);
+  });
+  expect(await changes(page)).toBe(1);
+  await page.evaluate(() => {
+    document.querySelector(
+      ".rm-ref-page-view-title span",
+    )!.firstChild!.textContent = "Renamed [[Target]]";
+  });
+  expect(await changes(page)).toBe(2);
+  await page.evaluate(() => {
+    document
+      .querySelector(".rm-ref-page-view-title span")!
+      .replaceChildren("Removed reference");
+  });
+  expect(await changes(page)).toBe(3);
+});
+
+test("native source carets refresh pins while pinned and ordinary classes stay ignored", async ({
+  page,
+}) => {
+  await page.setContent(
+    '<div class="rm-ref-page-view"><div class="rm-title-arrow-wrapper"><span id="native-caret" class="rm-caret rm-caret-open"></span></div></div><div class="rm-ref-page-view roamjs-reference-pin-page"><div class="rm-title-arrow-wrapper"><span id="pinned-caret" class="rm-caret rm-caret-open"></span></div></div><div id="ordinary" class="roam-block"></div>',
+  );
+  await page.addScriptTag({ content: script });
+  await page.evaluate(() => {
+    document.querySelector("#pinned-caret")!.classList.add("rm-caret-closed");
+    document.querySelector("#ordinary")!.classList.add("focused");
+  });
+  expect(await changes(page)).toBe(0);
+  await page.evaluate(() =>
+    document.querySelector("#native-caret")!.classList.add("rm-caret-closed"),
+  );
+  expect(await changes(page)).toBe(1);
+});

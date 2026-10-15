@@ -785,6 +785,11 @@ const initializeExtension = async ({
     await synchronizeSharedState();
     if (isInactive()) return cleanup;
 
+    extensionAPI.settings.panel.create({
+      tabTitle: "Pinned Blocks",
+      settings: [],
+    });
+
     mutationObserver = observePinStructure({
       root: document.body,
       onChange: scheduleIndicatorSync,

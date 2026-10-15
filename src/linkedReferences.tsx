@@ -664,10 +664,20 @@ export const createLinkedReferenceControls = ({
             ))
         );
       };
+      const hasActiveFilters = filters.some(({ includes, removes }) =>
+        Boolean(includes?.length || removes?.length),
+      );
       const hasUnpinnedHiddenBlocks = (heading: HTMLElement): boolean =>
-        (hiddenBlockUidsByHeading.get(heading) || []).some(
-          (blockUid) => !hasRenderedCopy({ targetUid, blockUid }),
-        );
+        (hiddenBlockUidsByHeading.get(heading) || []).some((blockUid) => {
+          const pin = { targetUid, blockUid };
+          if (hasRenderedCopy(pin)) return false;
+          if (!hasActiveFilters) return true;
+          const detail = readReference(pin);
+          return (
+            !detail ||
+            matchesReferenceFilters({ titles: detail.titles, filters })
+          );
+        });
       rows.forEach(({ row, pin }) => {
         activeRows.add(row);
         const isTitle = row.classList.contains("rm-title-arrow-wrapper");

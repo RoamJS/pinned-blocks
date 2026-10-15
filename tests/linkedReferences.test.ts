@@ -940,6 +940,38 @@ test("collapsed source heading hides once every hidden child has a rendered pin"
   await expect(heading).toBeVisible();
 });
 
+test("filtered hidden child does not keep a pinned title's collapsed heading visible", async ({
+  page,
+}) => {
+  const html =
+    '<div class="roam-article"><div class="rm-reference-container"><div class="flex-h-box"><strong>2 Linked References</strong></div><div class="rm-mentions"><div class="rm-ref-page-view"><div class="rm-title-arrow-wrapper"><span class="rm-caret-closed"></span><div class="rm-ref-page-view-title">Title [[Target]]</div></div></div></div></div></div>';
+  await setup(page, html);
+  await page.evaluate(() => {
+    window.roamAlphaAPI.ui.mainWindow = {
+      getOpenPageOrBlockUid: async () => "target123",
+    };
+    window.roamAlphaAPI.data.fast.q = (query, title) =>
+      query.includes(":node/title") && title === "Title [[Target]]"
+        ? [["title1234"]]
+        : query.includes(":block/page")
+          ? [["block1234"]]
+          : [];
+    window.filters = { removes: ["Tag"] };
+    window.controls.sync([{ targetUid: "target123", blockUid: "title1234" }]);
+  });
+  const heading = page.locator(
+    ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
+  );
+  await expect(
+    page.locator('[data-reference-pin-uid="title1234"]'),
+  ).toBeVisible();
+  await expect(heading).toBeHidden();
+  await page.evaluate(
+    `window.filters={};window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
+  );
+  await expect(heading).toBeVisible();
+});
+
 test("a previously hidden title heading returns when an unpinned child reference appears", async ({
   page,
 }) => {

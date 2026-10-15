@@ -37,6 +37,9 @@ const ensureHeadingSetting = async (page, hide) => {
     previousHideHeading = await section.locator("input").isChecked();
   if ((await section.locator("input").isChecked()) !== hide)
     await section.locator("label").click();
+  await section
+    .locator(hide ? "input:checked" : "input:not(:checked)")
+    .waitFor({ state: "attached" });
   assert.equal(await section.locator("input").isChecked(), hide);
   await closeSettings(page);
 };
@@ -47,13 +50,11 @@ const reloadExtension = async (page) => {
     .filter({ hasText: /^Settings$/ })
     .click();
   await page.locator("#bp3-tab-title_rm-settings-tabs_rm-depot-tab").click();
-  const row = page
-    .locator(".rm-extension-installed")
-    .filter({
-      has: page
-        .locator(".rm-extension-installed__name")
-        .filter({ hasText: /^pinned-blocks$/ }),
-    });
+  const row = page.locator(".rm-extension-installed").filter({
+    has: page
+      .locator(".rm-extension-installed__name")
+      .filter({ hasText: /^pinned-blocks$/ }),
+  });
   await page.evaluate(() => {
     window.feedbackPreviousStyle = document.getElementById(
       "roamjs-pinned-blocks-style",
@@ -259,6 +260,28 @@ export default {
         window.roamAlphaAPI.ui.mainWindow.openPage({ page: { uid: f.target } }),
       fixture,
     );
+    const beforeSidebar = await page.evaluate(
+      () => window.roamAlphaAPI.ui.rightSidebar.getWindows().length,
+    );
+    await label.click({ modifiers: ["Shift"] });
+    await assertEventually(
+      page,
+      (uid) =>
+        window.roamAlphaAPI.ui.rightSidebar
+          .getWindows()
+          .some((w) => w["page-uid"] === uid || w["block-uid"] === uid),
+      fixture.source,
+    );
+    await page.screenshot({ path: outDir + "/source-link-sidebar.png" });
+    await page.evaluate(
+      async ({ uid, close }) => {
+        await window.roamAlphaAPI.ui.rightSidebar.removeWindow({
+          window: { type: "outline", "block-uid": uid },
+        });
+        if (close) await window.roamAlphaAPI.ui.rightSidebar.close();
+      },
+      { uid: fixture.source, close: beforeSidebar === 0 },
+    );
     await heading(page).waitFor();
     await heading(page).press("Enter");
     await assertEventually(
@@ -358,7 +381,7 @@ export default {
       checks: [
         "120 references with unloaded saved pin",
         "page-title-only pin/unpin",
-        "native inline and source page links",
+        "native inline and source page links, including Shift-click sidebar",
         "collapse with hidden duplicates",
         "collapse persistence after native extension reload",
         "heading setting expands pins and persists after native extension reload",

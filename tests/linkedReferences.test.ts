@@ -692,7 +692,7 @@ test("page-title references pin independently of block results and keep source l
   });
   await copy.getByRole("link").click({ modifiers: ["Shift"] });
   expect(await page.evaluate("window.openedSidebar")).toEqual({
-    window: { type: "outline", "page-uid": "title1234" },
+    window: { type: "outline", "block-uid": "title1234" },
   });
   await copy.getByRole("button", { name: "Unpin linked reference" }).click();
   await page.evaluate("window.controls.sync([])");

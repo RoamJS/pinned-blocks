@@ -78,9 +78,12 @@ const SourcePageLink = ({
           return;
         event.preventDefault();
         if (event.shiftKey) {
-          void window.roamAlphaAPI.ui.rightSidebar.addWindow({
-            window: { type: "outline", "page-uid": uid },
-          });
+          // Installed types use page-uid, but Roam requires block-uid for all window types.
+          const addWindow = window.roamAlphaAPI.ui.rightSidebar
+            .addWindow as unknown as (args: {
+            window: { type: "outline"; "block-uid": string };
+          }) => Promise<void>;
+          void addWindow({ window: { type: "outline", "block-uid": uid } });
         } else {
           void window.roamAlphaAPI.ui.mainWindow.openPage({ page: { uid } });
         }

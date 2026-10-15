@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Fixed Shift-click on pinned source labels opening pages in the sidebar.
+
 - Avoided reading entire source-page outlines while displaying title reference pins.
 
 - Added collapsible pinned references and an option to hide their heading while keeping the group expanded.

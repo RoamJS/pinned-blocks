@@ -27,7 +27,11 @@ export const observePinStructure = ({
     const changed = mutations.some((mutation) =>
       mutation.type === "attributes"
         ? mutation.target instanceof Element &&
-          mutation.target.matches(PIN_STRUCTURE_SELECTOR)
+          (mutation.attributeName === "class"
+            ? mutation.target.matches(
+                ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper > .rm-caret",
+              )
+            : mutation.target.matches(PIN_STRUCTURE_SELECTOR))
         : (mutation.type === "characterData" ||
             mutation.type === "childList") &&
           (Boolean(
@@ -51,6 +55,7 @@ export const observePinStructure = ({
     subtree: true,
     attributes: true,
     attributeFilter: [
+      "class",
       "id",
       "data-block-uid",
       "data-page-title",

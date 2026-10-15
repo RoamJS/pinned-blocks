@@ -15,7 +15,7 @@ const script = buildSync({
     } } };
     window.controls = createLinkedReferenceControls({
       readReference: pin => pin.blockUid === 'title1234' ? ({sourceTitle:'Title [[Target]]', sourceUid:pin.blockUid, isPage:true, titles:['Title [[Target]]', 'Target']}) : window.missingPins?.includes(pin.blockUid) ? null : ({ sourceTitle: 'Source page', titles: ['Source page', 'Tag'] }),
-      renderBlock: async ({uid,el}) => { if (window.failRender) throw new Error("Injected render failure"); if (window.holdRender) await new Promise(resolve => {window.finishRender = resolve}); el.innerHTML = '<div class="roam-block-container" data-block-uid="'+uid+'">Rendered '+uid+'</div>'; window.renders = (window.renders || 0) + 1; },
+      renderBlock: async ({uid,el,"zoom-path?":zoomPath}) => { window.lastZoomPath=zoomPath; if (window.failRender) throw new Error("Injected render failure"); if (window.holdRender) await new Promise(resolve => {window.finishRender = resolve}); el.innerHTML = '<div class="roam-block-container" data-block-uid="'+uid+'">Rendered '+uid+'</div>'; window.renders = (window.renders || 0) + 1; },
       unmountBlock: async ({el}) => {el.innerHTML = ''; window.unmounts = (window.unmounts || 0) + 1},
       togglePin: async pin => {window.clickedPin = pin; window.toggleCount = (window.toggleCount || 0) + 1; if(window.holdToggle) await new Promise(resolve => {window.finishToggle = resolve})}
     });`,
@@ -57,6 +57,7 @@ test("pins render before lazy rows arrive, hide duplicates, and reveal native ro
   );
   const pinned = page.locator('[data-reference-pin-uid="block1234"]');
   await expect(pinned).toContainText("Rendered block1234");
+  expect(await page.evaluate("window.lastZoomPath")).toBe(false);
   await expect(page.locator(".roamjs-reference-pin-heading")).toHaveCount(0);
   await page
     .locator(".rm-ref-page-view > div:last-child")
@@ -399,7 +400,9 @@ test("native rows and source headings stay usable until pinned rendering succeed
   );
   await page.waitForFunction("Boolean(window.finishRender)");
   const row = page.getByTestId("row-target123-block1234");
-  const heading = page.locator(".rm-title-arrow-wrapper");
+  const heading = page.locator(
+    ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
+  );
   await expect(row).toBeVisible();
   await expect(heading).toBeVisible();
   await expect(row.getByRole("button")).toHaveAttribute("aria-pressed", "true");
@@ -419,7 +422,11 @@ test("renderer failures preserve the native row and retry restores one visible c
   const pinned = page.locator('[data-reference-pin-uid="block1234"]');
   await expect(pinned.getByRole("status")).toContainText("Couldn’t load");
   await expect(row).toBeVisible();
-  await expect(page.locator(".rm-title-arrow-wrapper")).toBeVisible();
+  await expect(
+    page.locator(
+      ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
+    ),
+  ).toBeVisible();
   await row.getByRole("button", { name: "Unpin linked reference" }).click();
   expect(await page.evaluate("window.clickedPin")).toEqual({
     targetUid: "target123",
@@ -660,7 +667,9 @@ test("page-title references pin independently of block results and keep source l
   );
   await page.evaluate(`window.roamAlphaAPI.ui.mainWindow = {openPage: args => {window.openedPage=args}};
     window.roamAlphaAPI.ui.rightSidebar.addWindow = args => {window.openedSidebar=args}; window.controls.sync([])`);
-  const title = page.locator(".rm-title-arrow-wrapper");
+  const title = page.locator(
+    ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
+  );
   await title.hover();
   await title
     .getByRole("button", { name: "Pin linked reference", exact: true })
@@ -674,6 +683,14 @@ test("page-title references pin independently of block results and keep source l
   );
   const copy = page.locator('[data-reference-pin-uid="title1234"]');
   await expect(copy).toBeVisible();
+  await expect(copy).toHaveClass(/rm-ref-page-view/);
+  await expect(copy.locator(".rm-reference-item")).toHaveCount(0);
+  await expect(copy.locator(".rm-ref-page-view-title")).toHaveText(
+    "Title [[Target]]",
+  );
+  await expect(
+    copy.getByRole("button", { name: "Collapse source references" }),
+  ).toBeVisible();
   await expect(title).toBeVisible(); // Still labels the unpinned child result.
   await expect(page.getByTestId("row-target123-block1234")).toBeVisible();
   await copy.getByRole("link").click();
@@ -732,7 +749,11 @@ test("pinning a title preserves a collapsed source heading with unloaded block r
   await expect(
     page.locator('[data-reference-pin-uid="title1234"]'),
   ).toBeVisible();
-  await expect(page.locator(".rm-title-arrow-wrapper")).toBeVisible();
+  await expect(
+    page.locator(
+      ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
+    ),
+  ).toBeVisible();
 });
 
 test("a previously hidden title heading returns when an unpinned child reference appears", async ({
@@ -753,15 +774,27 @@ test("a previously hidden title heading returns when an unpinned child reference
   await expect(
     page.locator('[data-reference-pin-uid="title1234"]'),
   ).toBeVisible();
-  await expect(page.locator(".rm-title-arrow-wrapper")).toBeHidden();
+  await expect(
+    page.locator(
+      ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
+    ),
+  ).toBeHidden();
   await page.evaluate(
-    `document.querySelector('.rm-ref-page-view > div:last-child').append(window.removedReferenceRow); window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
+    `document.querySelector('.rm-ref-page-view:not(.roamjs-reference-pin-page) > div:last-child').append(window.removedReferenceRow); window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
   );
-  await expect(page.locator(".rm-title-arrow-wrapper")).toBeVisible();
+  await expect(
+    page.locator(
+      ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
+    ),
+  ).toBeVisible();
   await page.evaluate(
-    `window.removedReferenceRow.remove();document.querySelector('.rm-title-arrow-wrapper').insertAdjacentHTML('afterbegin','<span class="rm-caret-closed"></span>');window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
+    `window.removedReferenceRow.remove();document.querySelector('.rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper').insertAdjacentHTML('afterbegin','<span class="rm-caret-closed"></span>');window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
   );
-  await expect(page.locator(".rm-title-arrow-wrapper")).toBeVisible();
+  await expect(
+    page.locator(
+      ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
+    ),
+  ).toBeVisible();
 });
 
 for (const filters of [{ includes: ["Tag"] }, { removes: ["Target"] }]) {
@@ -789,7 +822,9 @@ for (const filters of [{ includes: ["Tag"] }, { removes: ["Target"] }]) {
       w.filters = filters;
       w.controls.sync([{ targetUid: "target123", blockUid: "title1234" }]);
     }, filters);
-    const title = page.locator(".rm-title-arrow-wrapper");
+    const title = page.locator(
+      ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
+    );
     await expect(title).toBeVisible();
     await expect(title.getByRole("button")).toHaveCount(0);
     await expect(
@@ -826,3 +861,39 @@ for (const filters of [{ includes: ["Tag"] }, { removes: ["Target"] }]) {
     );
   });
 }
+
+test("pinned page caret operates the original source group", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    section("target123").replace(
+      ">Source page</div>",
+      '><span class="rm-caret rm-caret-closed"></span><div class="rm-ref-page-view-title">Title [[Target]]</div></div>',
+    ),
+  );
+  await page.evaluate(() => {
+    const caret = document.querySelector(".rm-caret");
+    caret.addEventListener("click", () => {
+      window.sourceCaretClicks = (window.sourceCaretClicks || 0) + 1;
+      caret.classList.toggle("rm-caret-closed");
+      caret.classList.toggle("rm-caret-open");
+    });
+    window.controls.sync([{ targetUid: "target123", blockUid: "title1234" }]);
+  });
+  const copy = page.locator('[data-reference-pin-uid="title1234"]');
+  const expand = copy.getByRole("button", {
+    name: "Expand source references",
+    exact: true,
+  });
+  await expect(expand).toHaveAttribute("aria-expanded", "false");
+  await expand.press("Enter");
+  await expect(
+    copy.getByRole("button", {
+      name: "Collapse source references",
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-expanded", "true");
+  expect(await page.evaluate("window.sourceCaretClicks")).toBe(1);
+  await expect(copy).toBeVisible();
+});

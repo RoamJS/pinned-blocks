@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Removed duplicate source breadcrumbs from pinned blocks and matched pinned pages to native page-reference rows.
+
 - Matched pinned source-page links to the size and opacity of regular linked-reference source titles.
 
 - Removed the pinned-reference heading and group collapse control so pinned references always stay visible.

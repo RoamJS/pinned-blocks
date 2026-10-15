@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import path from "node:path";
 const ownedPages = [];
 const ownedBlocks = [];
 let fixture;
+let registrationName = "pinned-blocks";
 const copy = (page, uid) =>
   page.locator(`.roam-article [data-reference-pin-uid="${uid}"]`);
 const nativeRow = (page, uid) =>
@@ -21,9 +23,7 @@ const reloadExtension = async (page) => {
     .click();
   await page.locator("#bp3-tab-title_rm-settings-tabs_rm-depot-tab").click();
   const row = page.locator(".rm-extension-installed").filter({
-    has: page
-      .locator(".rm-extension-installed__name")
-      .filter({ hasText: /^pinned-blocks$/ }),
+    has: page.getByText(registrationName, { exact: true }),
   });
   await page.evaluate(() => {
     window.feedbackPreviousStyle = document.getElementById(
@@ -44,7 +44,8 @@ export default {
     page.evaluate(() =>
       Boolean(document.getElementById("roamjs-pinned-blocks-style")),
     ),
-  async run({ page, outDir }) {
+  async run({ page, outDir, repoDir = process.cwd() }) {
+    registrationName = path.basename(repoDir);
     assert(
       await page.evaluate(
         () =>
@@ -187,7 +188,9 @@ export default {
     }, fixture);
     await copy(page, last).locator(`[data-block-uid="${last}"]`).waitFor();
     const sourceHeading = page
-      .locator(".roam-article .rm-title-arrow-wrapper")
+      .locator(
+        ".roam-article .rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
+      )
       .filter({ hasText: fixture.titleSourceTitle });
     await sourceHeading.hover();
     await sourceHeading
@@ -251,6 +254,19 @@ export default {
       },
       { uid: fixture.source, close: beforeSidebar === 0 },
     );
+    assert.equal(await copy(page, first).locator(".rm-zoom-path").count(), 0);
+    assert.equal(
+      await copy(page, fixture.titleSource)
+        .locator(".rm-reference-item")
+        .count(),
+      0,
+    );
+    assert.equal(
+      await copy(page, fixture.titleSource)
+        .locator(".rm-ref-page-view-title")
+        .count(),
+      1,
+    );
     await page.mouse.move(1000, 650);
     await page.evaluate(() => document.activeElement?.blur());
     const sourceAppearance = await page.evaluate(() => {
@@ -273,7 +289,7 @@ export default {
       return {
         pinned: appearance(".roam-article .roamjs-reference-pin-source a"),
         native: appearance(
-          ".roam-article .rm-ref-page-view .rm-ref-page-view-title a",
+          ".roam-article .rm-ref-page-view:not(.roamjs-reference-pin-page) .rm-ref-page-view-title a",
         ),
       };
     });
@@ -348,7 +364,9 @@ export default {
       fixture,
     );
     await copy(page, fixture.titleSource).waitFor();
-    await sourceHeading.locator(".rm-caret-open").click();
+    await copy(page, fixture.titleSource)
+      .getByRole("button", { name: "Collapse source references", exact: true })
+      .click();
     await assertEventually(
       page,
       (uid) =>
@@ -400,6 +418,8 @@ export default {
         "page-title-only pin/unpin",
         "native inline and source page links, including Shift-click sidebar",
         "source links match native typography and opacity",
+        "no duplicate block breadcrumb and page pins use native page headings",
+        "pinned page caret controls the native source group",
         "pins always visible without heading or group collapse control",
         "pins stay visible after native extension reload",
         "title and block pins remain independent",

@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom";
-import { Button } from "@blueprintjs/core";
+import { Button, Icon } from "@blueprintjs/core";
 import {
   getReferencePinKey,
   getReferenceTargetUid,
@@ -24,6 +24,8 @@ export const LINKED_REFERENCE_STYLES = `
   .roamjs-reference-pin-title-row:hover > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-title-row:focus-within > .roamjs-reference-pin-control > button { opacity: 1; pointer-events: auto; }
   .roamjs-reference-pin-source { padding: 4px 8px; font-size: 16px; overflow-wrap: anywhere; }
+  .roamjs-reference-pin-page .rm-ref-page-view-title { min-width: 0; overflow-wrap: anywhere; }
+  .roamjs-reference-pin-page .rm-caret { cursor: pointer; flex-shrink: 0; }
   .roamjs-reference-pin-title-row { display: flex; align-items: center; }
   .roamjs-reference-pin-title-row > .roamjs-reference-pin-control { display: inline-flex; margin-left: auto; }
   .roamjs-reference-pin-active { margin: 0 4px 8px 12px; }
@@ -41,6 +43,7 @@ type MountedPanel = {
   signature: string;
   renderedKeys: Set<string>;
   onRendered: (key: string) => void;
+  pageHeadings: Map<string, HTMLElement>;
 };
 type RenderBlock = (args: {
   uid: string;
@@ -48,7 +51,8 @@ type RenderBlock = (args: {
   "zoom-path?": boolean;
 }) => Promise<unknown>;
 type UnmountBlock = (args: { el: HTMLElement }) => Promise<unknown>;
-type PinnedEntry = ReferencePin & ReferenceDetails;
+type PinnedEntry = ReferencePin &
+  ReferenceDetails & { pageExpanded?: boolean; pageExpandable?: boolean };
 const SourcePageLink = ({
   title,
   uid,
@@ -143,7 +147,7 @@ const NativeBlock = ({
     let disposed = false;
     void unmounting.current
       .then(() => {
-        if (!disposed) return renderBlock({ uid, el, "zoom-path?": true });
+        if (!disposed) return renderBlock({ uid, el, "zoom-path?": false });
       })
       .then(() => {
         if (disposed) {
@@ -399,6 +403,7 @@ export const createLinkedReferenceControls = ({
       targets.set(list, targetUid);
       const rows = nativeRows.filter(({ pin }) => pin.targetUid === targetUid);
       const headingsWithHiddenBlocks = new Set<HTMLElement>();
+      const pageHeadings = new Map<string, HTMLElement>();
       const filters = getFilters(list, targetUid);
       // A page title can itself reference the target, even when it has no block rows.
       list
@@ -417,6 +422,7 @@ export const createLinkedReferenceControls = ({
             title,
           )[0]?.[0] as string | undefined;
           if (!source) return;
+          pageHeadings.set(source, heading);
           const pin = { targetUid, blockUid: source };
           const detail = readReference(pin);
           if (
@@ -441,7 +447,24 @@ export const createLinkedReferenceControls = ({
           const detail = readReference(pin);
           return detail &&
             matchesReferenceFilters({ titles: detail.titles, filters })
-            ? [{ ...pin, ...detail }]
+            ? [
+                {
+                  ...pin,
+                  ...detail,
+                  ...(detail.isPage
+                    ? {
+                        pageExpandable: Boolean(
+                          pageHeadings
+                            .get(pin.blockUid)
+                            ?.querySelector(".rm-caret"),
+                        ),
+                        pageExpanded: !pageHeadings
+                          .get(pin.blockUid)
+                          ?.querySelector(".rm-caret-closed"),
+                      }
+                    : {}),
+                },
+              ]
             : [];
         });
       const shownKeys = new Set(entries.map(getReferencePinKey));
@@ -457,6 +480,7 @@ export const createLinkedReferenceControls = ({
             mount,
             signature: "",
             renderedKeys: new Set(),
+            pageHeadings,
             onRendered: (key): void => {
               if (inactive || panels.get(list) !== mountedPanel) return;
               mountedPanel.renderedKeys.add(key);
@@ -466,6 +490,7 @@ export const createLinkedReferenceControls = ({
           panel = mountedPanel;
           panels.set(list, panel);
         }
+        panel.pageHeadings = pageHeadings;
         panel.renderedKeys.forEach((key) => {
           if (!shownKeys.has(key)) panel.renderedKeys.delete(key);
         });
@@ -480,30 +505,76 @@ export const createLinkedReferenceControls = ({
           ReactDOM.render(
             <>
               <div className="roamjs-reference-pin-content">
-                {entries.map((pin) => (
-                  <React.Fragment key={getReferencePinKey(pin)}>
-                    {!pin.isPage && (
+                {entries.map((pin) =>
+                  pin.isPage ? (
+                    <div
+                      key={getReferencePinKey(pin)}
+                      className="rm-ref-page-view roamjs-reference-pin-page"
+                      data-reference-pin-uid={pin.blockUid}
+                    >
+                      <div className="rm-title-arrow-wrapper roamjs-reference-pin-title-row">
+                        <Icon
+                          icon={pin.pageExpanded ? "caret-down" : "caret-right"}
+                          className={`rm-caret ${pin.pageExpanded ? "rm-caret-open" : "rm-caret-closed"} rm-caret-showing`}
+                          role="button"
+                          tabIndex={pin.pageExpandable ? 0 : -1}
+                          aria-disabled={!pin.pageExpandable}
+                          title={
+                            pin.pageExpanded
+                              ? "Collapse source references"
+                              : "Expand source references"
+                          }
+                          aria-label={
+                            pin.pageExpanded
+                              ? "Collapse source references"
+                              : "Expand source references"
+                          }
+                          aria-expanded={pin.pageExpanded}
+                          onClick={(): void => {
+                            panel.pageHeadings
+                              .get(pin.blockUid)
+                              ?.querySelector<HTMLElement>(".rm-caret")
+                              ?.click();
+                            sync(latestPins);
+                          }}
+                          onKeyDown={(event): void => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              event.currentTarget.click();
+                            }
+                          }}
+                        />
+                        <div className="rm-ref-page-view-title">
+                          <SourcePageLink
+                            title={pin.sourceTitle}
+                            uid={pin.sourceUid}
+                          />
+                        </div>
+                        <span className={CONTROL_CLASS}>
+                          <PinButton
+                            pinned
+                            pending={pendingKeys.has(getReferencePinKey(pin))}
+                            onClick={(): void => {
+                              void runToggle(pin);
+                            }}
+                            onKeyDown={navigateControls}
+                          />
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <React.Fragment key={getReferencePinKey(pin)}>
                       <div className="roamjs-reference-pin-source">
                         <SourcePageLink
                           title={pin.sourceTitle}
                           uid={pin.sourceUid}
                         />
                       </div>
-                    )}
-                    <div
-                      className={`${ROW_CLASS} roamjs-reference-pin-active`}
-                      data-reference-pin-uid={pin.blockUid}
-                    >
-                      <div className="rm-reference-item">
-                        {pin.isPage && (
-                          <div className="roamjs-reference-pin-source">
-                            <SourcePageLink
-                              title={pin.sourceTitle}
-                              uid={pin.sourceUid}
-                            />
-                          </div>
-                        )}
-                        {!pin.isPage && (
+                      <div
+                        className={`${ROW_CLASS} roamjs-reference-pin-active`}
+                        data-reference-pin-uid={pin.blockUid}
+                      >
+                        <div className="rm-reference-item">
                           <NativeBlock
                             uid={pin.blockUid}
                             pinKey={getReferencePinKey(pin)}
@@ -511,21 +582,21 @@ export const createLinkedReferenceControls = ({
                             renderBlock={renderBlock}
                             unmountBlock={unmountBlock}
                           />
-                        )}
+                        </div>
+                        <span className={CONTROL_CLASS}>
+                          <PinButton
+                            pinned
+                            pending={pendingKeys.has(getReferencePinKey(pin))}
+                            onClick={(): void => {
+                              void runToggle(pin);
+                            }}
+                            onKeyDown={navigateControls}
+                          />
+                        </span>
                       </div>
-                      <span className={CONTROL_CLASS}>
-                        <PinButton
-                          pinned
-                          pending={pendingKeys.has(getReferencePinKey(pin))}
-                          onClick={(): void => {
-                            void runToggle(pin);
-                          }}
-                          onKeyDown={navigateControls}
-                        />
-                      </span>
-                    </div>
-                  </React.Fragment>
-                ))}
+                    </React.Fragment>
+                  ),
+                )}
               </div>
             </>,
             panel.mount,

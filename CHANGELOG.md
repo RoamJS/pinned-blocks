@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Hid pin controls for filtered-out title references without removing their saved pins.
+
 - Fixed Shift-click on pinned source labels opening pages in the sidebar.
 
 - Avoided reading entire source-page outlines while displaying title reference pins.

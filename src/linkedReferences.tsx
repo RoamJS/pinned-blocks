@@ -412,6 +412,7 @@ export const createLinkedReferenceControls = ({
       targets.set(list, targetUid);
       const rows = nativeRows.filter(({ pin }) => pin.targetUid === targetUid);
       const headingsWithHiddenBlocks = new Set<HTMLElement>();
+      const filters = getFilters(list, targetUid);
       // A page title can itself reference the target, even when it has no block rows.
       list
         .querySelectorAll<HTMLElement>(".rm-ref-page-view")
@@ -430,7 +431,12 @@ export const createLinkedReferenceControls = ({
           )[0]?.[0] as string | undefined;
           if (!source) return;
           const pin = { targetUid, blockUid: source };
-          if (!readReference(pin)?.isPage) return;
+          const detail = readReference(pin);
+          if (
+            !detail?.isPage ||
+            !matchesReferenceFilters({ titles: detail.titles, filters })
+          )
+            return;
           rows.push({ row: heading, pin });
           if (
             heading.querySelector(".rm-caret-closed") &&
@@ -446,7 +452,6 @@ export const createLinkedReferenceControls = ({
       const collapsed =
         !preferences.hideHeading &&
         preferences.collapsedTargets.includes(targetUid);
-      const filters = getFilters(list, targetUid);
       const entries: PinnedEntry[] = pins
         .filter((pin) => pin.targetUid === targetUid)
         .flatMap((pin) => {

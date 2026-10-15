@@ -325,12 +325,48 @@ export default {
       await window.roamAlphaAPI.data.block.update({
         block: {
           uid: f.titleBlock,
-          string: "Independent block reference [[" + f.title + "]]",
+          string:
+            "Independent block reference [[" +
+            f.title +
+            "]] [[Open source " +
+            f.destination +
+            "]]",
         },
       });
     }, fixture);
     await nativeRow(page, fixture.titleBlock).waitFor();
     assert.equal(await sourceHeading.isVisible(), true);
+    await page.evaluate(
+      (f) =>
+        window.roamAlphaAPI.ui.filters.setPageLinkedRefsFilters({
+          page: { uid: f.target },
+          filters: { includes: ["Open source " + f.destination] },
+        }),
+      fixture,
+    );
+    await assertEventually(
+      page,
+      (uid) => !document.querySelector(`[data-reference-pin-uid="${uid}"]`),
+      fixture.titleSource,
+    );
+    await nativeRow(page, fixture.titleBlock).waitFor();
+    assert.equal(
+      await sourceHeading.getByRole("button").count(),
+      0,
+      "Filtered title pins must not display a misleading native control",
+    );
+    await page.screenshot({
+      path: outDir + "/filtered-title-control-hidden.png",
+    });
+    await page.evaluate(
+      (f) =>
+        window.roamAlphaAPI.ui.filters.setPageLinkedRefsFilters({
+          page: { uid: f.target },
+          filters: {},
+        }),
+      fixture,
+    );
+    await copy(page, fixture.titleSource).waitFor();
     await sourceHeading.locator(".rm-caret-open").click();
     await assertEventually(
       page,
@@ -388,6 +424,7 @@ export default {
         "title and block pins remain independent",
         "collapsed source groups preserve expansion controls",
         "source order unchanged",
+        "filtered title controls hidden while saved membership survives",
       ],
     };
     await fs.writeFile(

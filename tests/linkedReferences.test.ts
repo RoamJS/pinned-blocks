@@ -782,3 +782,66 @@ test("a previously hidden title heading returns when an unpinned child reference
   );
   await expect(page.locator(".rm-title-arrow-wrapper")).toBeVisible();
 });
+
+for (const filters of [{ includes: ["Tag"] }, { removes: ["Target"] }]) {
+  test(`filtered title references expose no misleading control while a child matches ${JSON.stringify(filters)}`, async ({
+    page,
+  }) => {
+    await setup(
+      page,
+      section("target123").replace(
+        ">Source page</div>",
+        '><div class="rm-ref-page-view-title">Title [[Target]]</div></div>',
+      ),
+    );
+    await page.evaluate(
+      `window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
+    );
+    await expect(
+      page.locator('[data-reference-pin-uid="title1234"]'),
+    ).toBeVisible();
+    await page.evaluate((filters) => {
+      const w = window as unknown as {
+        filters: unknown;
+        controls: { sync: (pins: unknown[]) => void };
+      };
+      w.filters = filters;
+      w.controls.sync([{ targetUid: "target123", blockUid: "title1234" }]);
+    }, filters);
+    const title = page.locator(".rm-title-arrow-wrapper");
+    await expect(title).toBeVisible();
+    await expect(title.getByRole("button")).toHaveCount(0);
+    await expect(
+      page.getByTestId("row-target123-block1234").getByRole("button"),
+    ).toHaveCount(1);
+    await expect(
+      page.locator('[data-reference-pin-uid="title1234"]'),
+    ).toHaveCount(0);
+    await page.evaluate(
+      `window.filters={};window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
+    );
+    await expect(
+      page.locator('[data-reference-pin-uid="title1234"]'),
+    ).toBeVisible();
+    await expect(title.getByRole("button")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(await page.evaluate("window.toggleCount || 0")).toBe(0);
+    await page.evaluate((filters) => {
+      const w = window as unknown as {
+        filters: unknown;
+        controls: { sync: (pins: unknown[]) => void };
+      };
+      w.filters = filters;
+      w.controls.sync([]);
+    }, filters);
+    await expect(title.getByRole("button")).toHaveCount(0);
+    await page.evaluate(`window.filters={};window.controls.sync([])`);
+    await title.hover();
+    await expect(title.getByRole("button")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+}

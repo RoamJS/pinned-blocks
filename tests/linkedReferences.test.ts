@@ -14,8 +14,6 @@ const script = buildSync({
       getSidebarWindowFilters: args => {window.sidebarFilterArgs=args;return window.sidebarFilters || {}}
     } } };
     window.controls = createLinkedReferenceControls({
-      getPreferences: () => window.referencePreferences || {hideHeading:false,collapsedTargets:[]},
-      setCollapsed: (uid, collapsed) => {window.referencePreferences = {...window.referencePreferences, hideHeading: false, collapsedTargets: collapsed ? [uid] : []}},
       readReference: pin => pin.blockUid === 'title1234' ? ({sourceTitle:'Title [[Target]]', sourceUid:pin.blockUid, isPage:true, titles:['Title [[Target]]', 'Target']}) : window.missingPins?.includes(pin.blockUid) ? null : ({ sourceTitle: 'Source page', titles: ['Source page', 'Tag'] }),
       renderBlock: async ({uid,el}) => { if (window.failRender) throw new Error("Injected render failure"); if (window.holdRender) await new Promise(resolve => {window.finishRender = resolve}); el.innerHTML = '<div class="roam-block-container" data-block-uid="'+uid+'">Rendered '+uid+'</div>'; window.renders = (window.renders || 0) + 1; },
       unmountBlock: async ({el}) => {el.innerHTML = ''; window.unmounts = (window.unmounts || 0) + 1},
@@ -59,9 +57,7 @@ test("pins render before lazy rows arrive, hide duplicates, and reveal native ro
   );
   const pinned = page.locator('[data-reference-pin-uid="block1234"]');
   await expect(pinned).toContainText("Rendered block1234");
-  await expect(
-    page.getByRole("button", { name: "Toggle pinned references" }),
-  ).toBeVisible();
+  await expect(page.locator(".roamjs-reference-pin-heading")).toHaveCount(0);
   await page
     .locator(".rm-ref-page-view > div:last-child")
     .evaluate(
@@ -626,36 +622,26 @@ for (const { label, field, type } of [
   });
 }
 
-test("collapse hides top copies and native duplicates, heading preference always restores access", async ({
+test("pinned references stay visible without a group collapse control", async ({
   page,
 }) => {
   await setup(page, section("target123"));
   await page.evaluate(
     `window.controls.sync([{targetUid:'target123', blockUid:'block1234'}])`,
   );
-  const heading = page.getByRole("button", {
-    name: "Toggle pinned references",
-    exact: true,
-  });
   const copy = page.locator('[data-reference-pin-uid="block1234"]');
   await expect(copy).toBeVisible();
-  await expect(heading).toHaveText("");
+  await expect(page.locator(".roamjs-reference-pin-heading")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      name: /(?:Toggle|Collapse|Expand) pinned references/,
+    }),
+  ).toHaveCount(0);
   await expect(page.getByText(/^Pinned references \(\d+\)$/)).toHaveCount(0);
-  await expect(heading).toHaveAttribute("title", "Collapse pinned references");
-  const before = await page.evaluate("window.renders");
-  await heading.click();
-  await expect(heading).toHaveAttribute("title", "Expand pinned references");
-  await expect(heading).toHaveAttribute("aria-expanded", "false");
-  await expect(copy).toBeHidden();
   await expect(page.getByTestId("row-target123-block1234")).toBeHidden();
-  await heading.press("Enter");
-  await expect(copy).toBeVisible();
-  expect(await page.evaluate("window.renders")).toBe(before);
-  await heading.click();
   await page.evaluate(
-    `window.referencePreferences.hideHeading = true; window.controls.sync([{targetUid:'target123', blockUid:'block1234'}])`,
+    `window.controls.sync([{targetUid:'target123', blockUid:'block1234'}])`,
   );
-  await expect(heading).toHaveCount(0);
   await expect(copy).toBeVisible();
   await copy.getByRole("button", { name: "Unpin linked reference" }).click();
   await page.evaluate("window.controls.sync([])");
@@ -708,7 +694,7 @@ test("page-title references pin independently of block results and keep source l
   );
 });
 
-test("saved page-title pins load without block rows and respect collapse and filters", async ({
+test("saved page-title pins stay visible without block rows and respect filters", async ({
   page,
 }) => {
   await setup(
@@ -721,14 +707,9 @@ test("saved page-title pins load without block rows and respect collapse and fil
       "</div>",
   );
   await page.evaluate(`window.roamAlphaAPI.ui.mainWindow = {getOpenPageOrBlockUid:async()=> 'target123'};
-    window.referencePreferences={hideHeading:false,collapsedTargets:['target123']};
     window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`);
   const copy = page.locator('[data-reference-pin-uid="title1234"]');
   await expect(copy).toHaveCount(1);
-  await expect(copy).toBeHidden();
-  await page
-    .getByRole("button", { name: "Toggle pinned references", exact: true })
-    .click();
   await expect(copy).toBeVisible();
   await page.evaluate(
     `window.filters={removes:['Target']};window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
@@ -751,10 +732,6 @@ test("pinning a title preserves a collapsed source heading with unloaded block r
   await expect(
     page.locator('[data-reference-pin-uid="title1234"]'),
   ).toBeVisible();
-  await expect(page.locator(".rm-title-arrow-wrapper")).toBeVisible();
-  await page
-    .getByRole("button", { name: "Toggle pinned references", exact: true })
-    .click();
   await expect(page.locator(".rm-title-arrow-wrapper")).toBeVisible();
 });
 

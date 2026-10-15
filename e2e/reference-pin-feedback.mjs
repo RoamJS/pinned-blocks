@@ -3,7 +3,6 @@ import fs from "node:fs/promises";
 const ownedPages = [];
 const ownedBlocks = [];
 let fixture;
-let previousHideHeading;
 const copy = (page, uid) =>
   page.locator(`.roam-article [data-reference-pin-uid="${uid}"]`);
 const nativeRow = (page, uid) =>
@@ -12,37 +11,8 @@ const nativeRow = (page, uid) =>
       `.roam-article .rm-ref-page-view .rm-reference-item:has([data-block-uid="${uid}"])`,
     )
     .locator("..");
-const heading = (page) =>
-  page.locator(".roam-article .roamjs-reference-pin-heading button");
-const settings = async (page) => {
-  await page.locator(".rm-topbar .bp3-icon-more").click();
-  await page
-    .locator(".bp3-menu-item")
-    .filter({ hasText: /^Settings$/ })
-    .click();
-  await page
-    .getByRole("tab", { name: "Pinned Blocks (dev)", exact: true })
-    .click();
-  const section = page.locator(".rm-settings-panel__section").filter({
-    has: page.getByText("Hide pinned references heading", { exact: true }),
-  });
-  await section.waitFor();
-  return section;
-};
 const closeSettings = (page) =>
   page.locator(".rm-settings-close-button").click();
-const ensureHeadingSetting = async (page, hide) => {
-  const section = await settings(page);
-  if (previousHideHeading === undefined)
-    previousHideHeading = await section.locator("input").isChecked();
-  if ((await section.locator("input").isChecked()) !== hide)
-    await section.locator("label").click();
-  await section
-    .locator(hide ? "input:checked" : "input:not(:checked)")
-    .waitFor({ state: "attached" });
-  assert.equal(await section.locator("input").isChecked(), hide);
-  await closeSettings(page);
-};
 const reloadExtension = async (page) => {
   await page.locator(".rm-topbar .bp3-icon-more").click();
   await page
@@ -83,7 +53,6 @@ export default {
       ),
       "Test graph only",
     );
-    await ensureHeadingSetting(page, false);
     await page.exposeFunction("ownFeedbackPage", async (uid) => {
       ownedPages.push(uid);
       await fs.writeFile(
@@ -282,45 +251,22 @@ export default {
       },
       { uid: fixture.source, close: beforeSidebar === 0 },
     );
-    await heading(page).waitFor();
-    await heading(page).press("Enter");
-    await assertEventually(
-      page,
-      () =>
-        document
-          .querySelector(".roam-article .roamjs-reference-pin-heading button")
-          ?.getAttribute("aria-expanded") === "false",
+    assert.equal(
+      await page.locator(".roamjs-reference-pin-heading").count(),
+      0,
     );
-    assert.equal(await copy(page, first).isVisible(), false);
+    assert.equal(await copy(page, first).isVisible(), true);
     assert.equal(await nativeRow(page, first).isVisible(), false);
-    await page.screenshot({ path: outDir + "/collapsed.png" });
-    // Native refresh retains the extension UUID; folder re-registration does not.
-    await reloadExtension(page);
-    await assertEventually(
-      page,
-      () =>
-        document
-          .querySelector(".roam-article .roamjs-reference-pin-heading button")
-          ?.getAttribute("aria-expanded") === "false",
-    );
-    assert.equal(await copy(page, fixture.titleSource).isVisible(), false);
-    await ensureHeadingSetting(page, true);
-    await copy(page, fixture.titleSource).waitFor();
-    assert.equal(await heading(page).count(), 0);
-    await page.screenshot({ path: outDir + "/heading-hidden.png" });
+    await page.screenshot({
+      path: outDir + "/pins-without-heading-or-collapse.png",
+    });
     await reloadExtension(page);
     await copy(page, fixture.titleSource).waitFor({ timeout: 60000 });
-    assert.equal(await heading(page).count(), 0);
-    await ensureHeadingSetting(page, false);
-    await assertEventually(
-      page,
-      () =>
-        document
-          .querySelector(".roam-article .roamjs-reference-pin-heading button")
-          ?.getAttribute("aria-expanded") === "false",
-    );
-    await heading(page).click();
     await copy(page, first).waitFor();
+    assert.equal(
+      await page.locator(".roamjs-reference-pin-heading").count(),
+      0,
+    );
     await page.evaluate(async (f) => {
       await window.roamAlphaAPI.data.block.update({
         block: {
@@ -418,9 +364,8 @@ export default {
         "120 references with unloaded saved pin",
         "page-title-only pin/unpin",
         "native inline and source page links, including Shift-click sidebar",
-        "collapse with hidden duplicates",
-        "collapse persistence after native extension reload",
-        "heading setting expands pins and persists after native extension reload",
+        "pins always visible without heading or group collapse control",
+        "pins stay visible after native extension reload",
         "title and block pins remain independent",
         "collapsed source groups preserve expansion controls",
         "source order unchanged",
@@ -434,27 +379,11 @@ export default {
     return report;
   },
   async cleanup({ page }) {
-    if (!ownedPages.length && previousHideHeading === undefined) return;
+    if (!ownedPages.length) return;
     await page
       .locator(".rm-settings-close-button")
       .click({ timeout: 1000 })
       .catch(() => {});
-    if (fixture?.target) {
-      await page.evaluate(
-        (f) =>
-          window.roamAlphaAPI.ui.mainWindow.openPage({
-            page: { uid: f.target },
-          }),
-        fixture,
-      );
-      if (
-        (await heading(page).count()) > 0 &&
-        (await heading(page).getAttribute("aria-expanded")) === "false"
-      )
-        await heading(page).click();
-    }
-    if (previousHideHeading !== undefined)
-      await ensureHeadingSetting(page, previousHideHeading);
     await page.evaluate(
       async ({ pages, blocks, f }) => {
         const api = window.roamAlphaAPI;

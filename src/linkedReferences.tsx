@@ -24,8 +24,6 @@ export const LINKED_REFERENCE_STYLES = `
   .roamjs-reference-pin-title-row:hover > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-title-row:focus-within > .roamjs-reference-pin-control > button { opacity: 1; pointer-events: auto; }
   .roamjs-reference-pin-source { padding: 4px 8px; font-size: 12px; opacity: 0.8; overflow-wrap: anywhere; }
-  .roamjs-reference-pin-heading { padding: 4px 8px; }
-  .roamjs-reference-pin-content[hidden] { display: none !important; }
   .roamjs-reference-pin-title-row { display: flex; align-items: center; }
   .roamjs-reference-pin-title-row > .roamjs-reference-pin-control { display: inline-flex; margin-left: auto; }
   .roamjs-reference-pin-active { margin: 0 4px 8px 12px; }
@@ -42,7 +40,6 @@ type MountedPanel = {
   mount: HTMLDivElement;
   signature: string;
   renderedKeys: Set<string>;
-  contentId: string;
   onRendered: (key: string) => void;
 };
 type RenderBlock = (args: {
@@ -52,11 +49,6 @@ type RenderBlock = (args: {
 }) => Promise<unknown>;
 type UnmountBlock = (args: { el: HTMLElement }) => Promise<unknown>;
 type PinnedEntry = ReferencePin & ReferenceDetails;
-export type ReferencePreferences = {
-  hideHeading: boolean;
-  collapsedTargets: string[];
-};
-
 const SourcePageLink = ({
   title,
   uid,
@@ -194,8 +186,6 @@ const NativeBlock = ({
 
 export const createLinkedReferenceControls = ({
   togglePin,
-  getPreferences = () => ({ hideHeading: false, collapsedTargets: [] }),
-  setCollapsed = () => {},
   readReference = readReferenceDetails,
   renderBlock = (args): Promise<unknown> =>
     window.roamAlphaAPI.ui.components.renderBlock(args),
@@ -203,8 +193,6 @@ export const createLinkedReferenceControls = ({
     window.roamAlphaAPI.ui.components.unmountNode(args),
 }: {
   togglePin: (pin: ReferencePin) => Promise<void>;
-  getPreferences?: () => ReferencePreferences;
-  setCollapsed?: (targetUid: string, collapsed: boolean) => void;
   readReference?: (pin: ReferencePin) => ReferenceDetails | null;
   renderBlock?: RenderBlock;
   unmountBlock?: UnmountBlock;
@@ -221,7 +209,6 @@ export const createLinkedReferenceControls = ({
   const pendingKeys = new Set<string>();
   let latestPins: ReferencePin[] = [];
   let inactive = false;
-  let panelSequence = 0;
   const decorate = (
     element: HTMLElement,
     className: string,
@@ -448,10 +435,6 @@ export const createLinkedReferenceControls = ({
           )
             headingsWithHiddenBlocks.add(heading);
         });
-      const preferences = getPreferences();
-      const collapsed =
-        !preferences.hideHeading &&
-        preferences.collapsedTargets.includes(targetUid);
       const entries: PinnedEntry[] = pins
         .filter((pin) => pin.targetUid === targetUid)
         .flatMap((pin) => {
@@ -474,7 +457,6 @@ export const createLinkedReferenceControls = ({
             mount,
             signature: "",
             renderedKeys: new Set(),
-            contentId: `roamjs-reference-pins-${++panelSequence}`,
             onRendered: (key): void => {
               if (inactive || panels.get(list) !== mountedPanel) return;
               mountedPanel.renderedKeys.add(key);
@@ -488,8 +470,6 @@ export const createLinkedReferenceControls = ({
           if (!shownKeys.has(key)) panel.renderedKeys.delete(key);
         });
         const signature = JSON.stringify([
-          preferences.hideHeading,
-          collapsed,
           entries.map((entry) => [
             entry,
             pendingKeys.has(getReferencePinKey(entry)),
@@ -499,32 +479,7 @@ export const createLinkedReferenceControls = ({
           panel.signature = signature;
           ReactDOM.render(
             <>
-              {!preferences.hideHeading && (
-                <div className="roamjs-reference-pin-heading">
-                  <Button
-                    minimal
-                    small
-                    icon={collapsed ? "caret-right" : "caret-down"}
-                    aria-label="Toggle pinned references"
-                    title={
-                      collapsed
-                        ? "Expand pinned references"
-                        : "Collapse pinned references"
-                    }
-                    aria-expanded={!collapsed}
-                    aria-controls={panel.contentId}
-                    onClick={(): void => {
-                      setCollapsed(targetUid, !collapsed);
-                      sync(latestPins);
-                    }}
-                  />
-                </div>
-              )}
-              <div
-                id={panel.contentId}
-                className="roamjs-reference-pin-content"
-                hidden={collapsed}
-              >
+              <div className="roamjs-reference-pin-content">
                 {entries.map((pin) => (
                   <React.Fragment key={getReferencePinKey(pin)}>
                     {!pin.isPage && (

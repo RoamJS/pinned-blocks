@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Kept page-title pin controls in sync with linked-reference filters even before any references are pinned.
+
 - Fixed pinned source-page links opened in a new tab or copied while the main window is on Search or another non-page route.
 
 - Added native-style source-page carets to collapse and expand individual pinned block references.

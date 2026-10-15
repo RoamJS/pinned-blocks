@@ -755,7 +755,7 @@ export const createLinkedReferenceControls = ({
   let filterSnapshot = "";
   // Roam can change filters without changing any currently loaded result rows.
   const filterPoll = window.setInterval(() => {
-    if (inactive || !latestPins.length) return;
+    if (inactive) return;
     const snapshot = JSON.stringify([
       window.location.href,
       Array.from(

@@ -255,6 +255,59 @@ test("filter changes refresh unloaded pins even without a native DOM change", as
   await expect(page.locator('[class*="roamjs-reference-pin"]')).toHaveCount(0);
 });
 
+test("unsaved title controls follow filter-only changes without replacing native rows", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    section("target123").replace(
+      ">Source page</div>",
+      '><div class="rm-ref-page-view-title">Title [[Target]]</div></div>',
+    ),
+  );
+  await page.evaluate("window.controls.sync([])");
+  const heading = page.locator(".rm-title-arrow-wrapper");
+  const titlePin = heading.getByRole("button", {
+    name: "Pin linked reference",
+    exact: true,
+  });
+  const native = await page
+    .getByTestId("row-target123-block1234")
+    .elementHandle();
+  await expect(titlePin).toHaveCount(1);
+  await page.evaluate("window.filters={includes:['Tag']}");
+  await expect(titlePin).toHaveCount(0);
+  expect(await native!.evaluate((el) => el.isConnected)).toBe(true);
+  await expect(page.getByTestId("row-target123-block1234")).toBeVisible();
+  await page.evaluate("window.filters={}");
+  await expect(titlePin).toHaveCount(1);
+  await page.evaluate("window.filters={removes:['Target']}");
+  await expect(titlePin).toHaveCount(0);
+  await page.evaluate("window.controls.cleanup();window.filters={}");
+  await page.waitForTimeout(600);
+  await expect(page.locator(".roamjs-reference-pin-control")).toHaveCount(0);
+  expect(await page.evaluate("window.toggleCount || 0")).toBe(0);
+});
+
+test("clearing filters restores an unsaved title when no pin controls were mounted", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    '<div class="roam-article"><div class="rm-reference-container"><div class="flex-h-box"><strong>1 Linked Reference</strong></div><div class="rm-mentions"><div class="rm-ref-page-view"><div class="rm-title-arrow-wrapper"><div class="rm-ref-page-view-title">Title [[Target]]</div></div></div></div></div></div>',
+  );
+  await page.evaluate(
+    `window.roamAlphaAPI.ui.mainWindow={getOpenPageOrBlockUid:async()=> 'target123'};window.filters={includes:['Tag']};window.controls.sync([])`,
+  );
+  await page.waitForTimeout(600);
+  await expect(page.locator(".roamjs-reference-pin-control")).toHaveCount(0);
+  await page.evaluate("window.filters={}");
+  await expect(
+    page.getByRole("button", { name: "Pin linked reference", exact: true }),
+  ).toHaveCount(1);
+  await page.evaluate("window.controls.cleanup()");
+});
+
 test("a recreated empty sidebar reference list restores pins from its window identity", async ({
   page,
 }) => {
@@ -1048,4 +1101,76 @@ test("pinned block source caret hides only its copy without remounting or exposi
   expect(await page.evaluate("window.unmounts || 0")).toBe(0);
   await page.evaluate(`window.controls.sync([])`);
   await expect(native).toBeVisible();
+});
+
+test("raw alias source headings retain page pin identity and native caret mapping", async ({
+  page,
+}) => {
+  const sourceTitle = "Alias source [label]([[Target]])";
+  // Native Roam headings retain the full alias syntax instead of rendering its label.
+  await setup(
+    page,
+    `<div class="roam-article"><div class="rm-reference-container"><div class="flex-h-box"><strong>1 Linked Reference</strong></div>
+    <div class="rm-mentions"><div class="rm-ref-page-view"><div class="flex-h-box rm-title-arrow-wrapper">
+    <span class="rm-caret rm-caret-open"></span><div class="rm-ref-page-view-title dont-focus-block"><a><span class="rm-page__title dont-focus-block">${sourceTitle}</span></a></div>
+    </div><div></div></div></div></div></div>`,
+  );
+  await page.evaluate((rawTitle) => {
+    window.sourceTitleQueries = [];
+    window.roamAlphaAPI.data.fast.q = (query, title) => {
+      if (!query.includes(":node/title")) return [];
+      window.sourceTitleQueries.push(title);
+      return title === rawTitle ? [["title1234"]] : [];
+    };
+    window.roamAlphaAPI.ui.mainWindow = {
+      getOpenPageOrBlockUid: async () => "target123",
+    };
+    const caret = document.querySelector(".rm-caret");
+    caret.addEventListener("click", () => {
+      window.sourceCaretClicks = (window.sourceCaretClicks || 0) + 1;
+      caret.classList.toggle("rm-caret-closed");
+      caret.classList.toggle("rm-caret-open");
+    });
+    window.controls.sync([]);
+  }, sourceTitle);
+  const heading = page.locator(
+    ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
+  );
+  await heading.hover();
+  await heading
+    .getByRole("button", { name: "Pin linked reference", exact: true })
+    .click();
+  expect(await page.evaluate("window.clickedPin")).toEqual({
+    targetUid: "target123",
+    blockUid: "title1234",
+  });
+  await page.evaluate(
+    `window.controls.sync([{targetUid:'target123',blockUid:'title1234'}])`,
+  );
+  const pinned = page.locator('[data-reference-pin-uid="title1234"]');
+  await expect(pinned).toBeVisible();
+  await expect(heading).toBeHidden();
+  await pinned
+    .getByRole("button", { name: "Collapse source references", exact: true })
+    .click();
+  expect(await page.evaluate("window.sourceCaretClicks")).toBe(1);
+  await expect(
+    pinned.getByRole("button", {
+      name: "Expand source references",
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await pinned.getByRole("button", { name: "Unpin linked reference" }).click();
+  await page.evaluate("window.controls.sync([])");
+  await expect(pinned).toHaveCount(0);
+  await expect(heading).toBeVisible();
+  await expect(heading.getByRole("button")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  const queriedTitles = (await page.evaluate(
+    "window.sourceTitleQueries",
+  )) as string[];
+  expect(queriedTitles.length).toBeGreaterThan(0);
+  expect(new Set(queriedTitles)).toEqual(new Set([sourceTitle]));
 });

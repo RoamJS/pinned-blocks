@@ -38,6 +38,12 @@ Reference pins are saved separately for each target page or block under
 They change the displayed reference order without changing source block order.
 Saved reference pins render immediately at the top, including references Roam has not lazy-loaded yet. Once the pinned copy has rendered successfully, the extension hides its original row when Roam loads it. While rendering is pending or has failed, the original row remains available. A failed pinned copy offers a Retry button. Unpinning removes the top copy and restores the original row. Roam's include/remove filters still apply to pinned copies. Deleted blocks and blocks that no longer reference the target are not shown.
 
+## Pin controls near bullets
+
+Enable **Show pin controls near bullets** in the Pinned Blocks settings to pin or unpin outline blocks using buttons beside their bullets. In this mode, linked-reference buttons also appear on the left, near their bullets (or beside the heading for page-title references). Unpinned controls appear on hover or keyboard focus; active pins stay visible.
+
+The setting is off by default. Turning it off restores outline pin indicators and linked-reference buttons on the right. Outline pins still reorder siblings under their parent; linked-reference pins still affect only the target's reference results.
+
 ## Multiplayer graphs
 
 Collaborators running Pinned Blocks in the same graph share the same pin records

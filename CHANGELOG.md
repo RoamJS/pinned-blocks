@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Added an optional setting to show pin and unpin controls near block bullets on hover or keyboard focus, in outlines and linked references.
+
 - Hid redundant collapsed source headings when matching child references are rendered by direct or ancestor pins, or filtered out, including source pages whose titles are not references.
 
 - Kept page-title pin controls in sync with linked-reference filters even before any references are pinned.

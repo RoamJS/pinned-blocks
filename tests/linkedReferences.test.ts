@@ -48,6 +48,34 @@ const setup = async (
   });
 };
 
+test("optional near-bullet placement applies to native and pinned reference controls and restores defaults", async ({
+  page,
+}) => {
+  await setup(page, section("target123"));
+  const row = page.getByTestId("row-target123-block1234");
+  await page.evaluate("window.controls.sync([],true)");
+  const button = row.getByRole("button");
+  await row.hover();
+  await expect(button).toHaveCSS("grid-column-start", "1");
+  await button.click();
+  expect(await page.evaluate("window.clickedPin")).toEqual({
+    targetUid: "target123",
+    blockUid: "block1234",
+  });
+  await page.evaluate(
+    "window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])",
+  );
+  const pinned = page.locator('[data-reference-pin-uid="block1234"]');
+  await expect(pinned.getByRole("button")).toHaveCSS("grid-column-start", "1");
+  await pinned.getByRole("button").click();
+  await page.evaluate("window.controls.sync([],false)");
+  await row.hover();
+  await expect(row.getByRole("button")).toHaveCSS("grid-column-start", "2");
+  await expect(page.locator(".roamjs-reference-pin-near-bullet")).toHaveCount(
+    0,
+  );
+});
+
 test("pins render before lazy rows arrive, hide duplicates, and reveal native rows on unpin", async ({
   page,
 }) => {

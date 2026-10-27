@@ -12,6 +12,10 @@ import { getReferencePinKey, type ReferencePin } from "~/utils/referencePins";
 import { createAsyncLifecycle } from "~/utils/asyncLifecycle";
 import { observePinStructure } from "~/utils/pinObserver";
 import {
+  createOutlinePinControls,
+  OUTLINE_PIN_STYLES,
+} from "~/outlinePinControls";
+import {
   CONFIG_PAGE_TITLE,
   NOTICE_TEXT,
   buildPinnedBlocksByParent,
@@ -60,6 +64,7 @@ const PINNED_BLOCK_CLASS = "roamjs-pinned-blocks-block";
 const PINNED_BLOCK_ACTIVE_CLASS = "roamjs-pinned-blocks-block-pinned";
 const INDICATOR_CLASS = "roamjs-pinned-blocks-indicator";
 const UID_SUFFIX_REGEX = /[A-Za-z0-9_-]{9}$/;
+const HOVER_PIN_SETTING = "hover-pin-controls";
 
 const createRoamPage = async (title: string): Promise<string> => {
   const uid = window.roamAlphaAPI.util.generateUID();
@@ -205,6 +210,7 @@ const initializeExtension = async ({
 }: OnloadArgs & { isCancelled: () => boolean }): Promise<() => void> => {
   let currentSettings: PinnedBlocksByParent = {};
   let referencePins: ReferencePin[] = [];
+  let hoverPinControls = extensionAPI.settings.get(HOVER_PIN_SETTING) === true;
   let configWatcherCleanup: (() => void) | null = null;
   let configWatcherPageUid = "";
   const parentWatcherCleanups = new Map<string, () => void>();
@@ -224,6 +230,7 @@ const initializeExtension = async ({
   const style = addStyle(
     `
       ${LINKED_REFERENCE_STYLES}
+      ${OUTLINE_PIN_STYLES}
 
       .${PINNED_BLOCK_CLASS} {
         position: relative;
@@ -402,8 +409,9 @@ const initializeExtension = async ({
   const syncPinnedIndicators = (): void => {
     indicatorFrame = null;
     if (isInactive()) return;
-    referenceControls.sync(referencePins);
+    referenceControls.sync(referencePins, hoverPinControls);
     const pinnedUids = getPinnedUids(currentSettings);
+    outlineControls.sync({ enabled: hoverPinControls, pinnedUids });
 
     document
       .querySelectorAll<HTMLElement>(`.${PINNED_BLOCK_CLASS}`)
@@ -703,6 +711,15 @@ const initializeExtension = async ({
     }
   };
 
+  const outlineControls = createOutlinePinControls({
+    togglePin: async (uid): Promise<void> => {
+      if (isInactive()) return;
+      if (getPinnedParentUid({ uid, settings: currentSettings }))
+        await unpinBlock(uid);
+      else await pinBlock(uid);
+    },
+  });
+
   const referenceControls = createLinkedReferenceControls({
     togglePin: async (pin): Promise<void> => {
       if (isInactive()) return;
@@ -726,7 +743,8 @@ const initializeExtension = async ({
           }
         });
         await synchronizeSharedState();
-        if (!isInactive()) referenceControls.sync(referencePins);
+        if (!isInactive())
+          referenceControls.sync(referencePins, hoverPinControls);
       } catch (error) {
         console.error(
           "Pinned Blocks failed to change a linked reference pin",
@@ -754,6 +772,7 @@ const initializeExtension = async ({
     if (configSyncTimeout !== null) window.clearTimeout(configSyncTimeout);
     mutationObserver?.disconnect();
     referenceControls.cleanup();
+    outlineControls.cleanup();
     enforceTimeouts.forEach((timeout) => window.clearTimeout(timeout));
     enforceTimeouts.clear();
     parentWatcherCleanups.forEach((cleanup) => cleanup());
@@ -787,7 +806,22 @@ const initializeExtension = async ({
 
     extensionAPI.settings.panel.create({
       tabTitle: "Pinned Blocks",
-      settings: [],
+      settings: [
+        {
+          id: HOVER_PIN_SETTING,
+          name: "Show pin controls near bullets",
+          description:
+            "Show pin and unpin buttons near block bullets on hover or keyboard focus, in outlines and linked references.",
+          action: {
+            type: "switch",
+            onChange: (event): void => {
+              hoverPinControls =
+                typeof event === "boolean" ? event : event.target.checked;
+              scheduleIndicatorSync();
+            },
+          },
+        },
+      ],
     });
 
     mutationObserver = observePinStructure({

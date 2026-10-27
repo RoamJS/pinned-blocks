@@ -1,0 +1,125 @@
+import { expect, test, type Page } from "@playwright/test";
+import { buildSync } from "esbuild";
+
+test.use({
+  launchOptions: { executablePath: process.env.ROAM_BROWSER_EXECUTABLE_PATH },
+});
+const script = buildSync({
+  stdin: {
+    contents: `import {createOutlinePinControls, OUTLINE_PIN_STYLES} from './src/outlinePinControls';
+      window.styles = OUTLINE_PIN_STYLES;
+      window.controls = createOutlinePinControls({togglePin: async uid => {
+        window.clicked = uid; window.clicks = (window.clicks || 0) + 1;
+        if (window.hold) await new Promise(resolve => window.finish = resolve);
+      }});`,
+    resolveDir: process.cwd(),
+    loader: "tsx",
+  },
+  bundle: true,
+  write: false,
+  format: "iife",
+}).outputFiles[0].text;
+const block = (uid: string): string =>
+  `<div class="roam-block-container"><div class="rm-block-main"><span class="controls">•</span><div class="roam-block" id="block-input-${uid}">Block ${uid}</div></div></div>`;
+const setup = async (page: Page): Promise<void> => {
+  await page.setContent(
+    `<style>.rm-block-main{margin-left:40px;display:flex;min-height:30px}</style>${block("block1234")}<div class="rm-reference-item">${block("other1234")}</div><div id="outside">Outside</div>`,
+  );
+  await page.addScriptTag({ content: script });
+  await page.addStyleTag({ content: await page.evaluate("window.styles") });
+};
+
+test("disabled mode preserves the outline; enabled buttons reveal on hover and focus", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.evaluate(
+    "window.controls.sync({enabled:false,pinnedUids:new Set()})",
+  );
+  await expect(page.getByRole("button")).toHaveCount(0);
+  await page.evaluate(
+    "window.controls.sync({enabled:true,pinnedUids:new Set()})",
+  );
+  const button = page.getByRole("button", { name: "Pin block", exact: true });
+  await expect(button).toHaveCount(1);
+  await page.locator("#outside").hover();
+  await expect(button).toHaveCSS("opacity", "0");
+  await page.locator(".rm-block-main").first().hover();
+  await expect(button).toHaveCSS("opacity", "1");
+  await page.locator("#outside").hover();
+  await button.focus();
+  await expect(button).toHaveCSS("opacity", "1");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => page.evaluate("window.clicked")).toBe("block1234");
+  await page.evaluate(
+    "window.controls.sync({enabled:true,pinnedUids:new Set(['block1234'])})",
+  );
+  await expect(
+    page.getByRole("button", { name: "Unpin block", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+});
+
+test("reused rows target their current UID and pending clicks are serialized", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.evaluate(
+    "window.controls.sync({enabled:true,pinnedUids:new Set()})",
+  );
+  await page
+    .locator("#block-input-block1234")
+    .evaluate((el) => (el.id = "block-input-newuid123"));
+  await page.evaluate(
+    "window.controls.sync({enabled:true,pinnedUids:new Set()}); window.hold=true",
+  );
+  await page.getByRole("button").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button")).toBeDisabled();
+  await expect.poll(() => page.evaluate("window.clicked")).toBe("newuid123");
+  await page.evaluate("document.querySelector('button').click()");
+  expect(await page.evaluate("window.clicks")).toBe(1);
+  await page.evaluate(
+    "window.controls.sync({enabled:false,pinnedUids:new Set()});window.finish()",
+  );
+  await expect(page.getByRole("button")).toHaveCount(0);
+  await expect(page.locator(".roamjs-outline-pin-host")).toHaveCount(0);
+});
+
+test("cleanup unmounts controls and prevents an in-flight action restoring them", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.evaluate(
+    "window.hold=true;window.controls.sync({enabled:true,pinnedUids:new Set()})",
+  );
+  await page.getByRole("button").focus();
+  await page.keyboard.press("Enter");
+  await page.evaluate(
+    "window.controls.cleanup();window.finish();window.controls.sync({enabled:true,pinnedUids:new Set()})",
+  );
+  await expect(page.getByRole("button")).toHaveCount(0);
+  await expect(page.locator(".roamjs-outline-pin-host")).toHaveCount(0);
+});
+
+test("sidebar controls remain inside the clipped outline", async ({ page }) => {
+  await setup(page);
+  await page
+    .locator(".roam-block-container")
+    .first()
+    .evaluate((el) => {
+      const sidebar = document.createElement("div");
+      sidebar.id = "right-sidebar";
+      sidebar.style.overflow = "hidden";
+      el.before(sidebar);
+      sidebar.append(el);
+    });
+  await page.evaluate(
+    "window.controls.sync({enabled:true,pinnedUids:new Set(['block1234'])})",
+  );
+  const button = page.getByRole("button", { name: "Unpin block", exact: true });
+  const host = await page.locator(".roamjs-outline-pin-host").boundingBox();
+  const bounds = await button.boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(host!.x);
+  await button.click();
+  expect(await page.evaluate("window.clicked")).toBe("block1234");
+});

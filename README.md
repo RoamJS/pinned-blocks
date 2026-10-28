@@ -42,6 +42,8 @@ Saved reference pins render immediately at the top, including references Roam ha
 
 Enable **Show pin controls near bullets** in the Pinned Blocks settings to pin or unpin outline blocks using buttons beside their bullets. In this mode, linked-reference buttons also appear on the left, near their bullets (or beside the heading for page-title references). Unpinned controls appear on hover or keyboard focus; active pins stay visible.
 
+Linked-reference pins share the outline pin column. The controls sit outside the reference content without shifting source headings, bullets, or text.
+
 The setting is off by default. Turning it off restores outline pin indicators and linked-reference buttons on the right. Outline pins still reorder siblings under their parent; linked-reference pins still affect only the target's reference results.
 
 ## Multiplayer graphs

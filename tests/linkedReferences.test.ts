@@ -7,7 +7,10 @@ test.use({
 const script = buildSync({
   stdin: {
     contents: `import { createLinkedReferenceControls, LINKED_REFERENCE_STYLES } from "./src/linkedReferences";
+    import { createOutlinePinControls, OUTLINE_PIN_STYLES } from "./src/outlinePinControls";
     window.referencePinStyles = LINKED_REFERENCE_STYLES;
+    window.outlinePinStyles = OUTLINE_PIN_STYLES;
+    window.outlineControls = createOutlinePinControls({togglePin: async () => {}});
     window.filters = {};
     window.roamAlphaAPI = { data: { fast: { q: () => [['title1234']] } }, ui: { rightSidebar: { getWindows: () => [{type:"mentions", "window-id":"sidebar-mentions-target123", "page-uid":"target123"}] }, filters: {
       getGlobalFilters: () => ({}), getPageLinkedRefsFilters: () => window.filters,
@@ -52,11 +55,16 @@ test("optional near-bullet placement applies to native and pinned reference cont
   page,
 }) => {
   await setup(page, section("target123"));
+  await page.addStyleTag({
+    content: ".rm-reference-container { margin-left: 64px; }",
+  });
   const row = page.getByTestId("row-target123-block1234");
   await page.evaluate("window.controls.sync([],true)");
   const button = row.getByRole("button");
   await row.hover();
-  await expect(button).toHaveCSS("grid-column-start", "1");
+  expect((await button.boundingBox())!.x).toBeLessThan(
+    (await row.boundingBox())!.x,
+  );
   await button.click();
   expect(await page.evaluate("window.clickedPin")).toEqual({
     targetUid: "target123",
@@ -66,14 +74,125 @@ test("optional near-bullet placement applies to native and pinned reference cont
     "window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])",
   );
   const pinned = page.locator('[data-reference-pin-uid="block1234"]');
-  await expect(pinned.getByRole("button")).toHaveCSS("grid-column-start", "1");
+  expect((await pinned.getByRole("button").boundingBox())!.x).toBeLessThan(
+    (await pinned.boundingBox())!.x,
+  );
   await pinned.getByRole("button").click();
   await page.evaluate("window.controls.sync([],false)");
   await row.hover();
-  await expect(row.getByRole("button")).toHaveCSS("grid-column-start", "2");
+  expect((await row.getByRole("button").boundingBox())!.x).toBeGreaterThan(
+    (await row.boundingBox())!.x,
+  );
   await expect(page.locator(".roamjs-reference-pin-near-bullet")).toHaveCount(
     0,
   );
+});
+
+test("reference controls share the outline pin column without moving native content", async ({
+  page,
+}) => {
+  const nativeSection = section("target123").replace(
+    '<div class="rm-title-arrow-wrapper">Source page</div>',
+    '<div class="flex-h-box rm-title-arrow-wrapper"><span class="rm-caret"></span><div class="rm-ref-page-view-title">Title [[Target]]</div></div>',
+  );
+  await setup(
+    page,
+    `<div class="roam-article"><div class="roam-block-container"><div class="rm-block-main"><div class="controls">•</div><div class="roam-block" id="block-input-outline12">Outline block</div></div></div>${nativeSection}</div>`,
+  );
+  await page.addStyleTag({
+    content: `
+    .roam-article { margin-left: 100px; width: 600px; }
+    .flex-h-box, .rm-block-main { display: flex; }
+    .rm-block-main { margin-left: -27px; }
+    .controls { flex: 0 0 27px; }
+    .roam-block { flex: 1; min-width: 0; }
+    .rm-mentions { margin-left: -12px; }
+    .rm-title-arrow-wrapper { min-height: 24px; line-height: 24px; }
+    .rm-ref-page-view > div:last-child { margin-left: 4px; }
+    .rm-reference-item { flex: 1; margin: 4px 0 4px 8px; padding-right: 8px; }
+    .rm-reference-item .rm-block-main { margin-left: 0; }
+  `,
+  });
+  await page.addStyleTag({
+    content: await page.evaluate("window.outlinePinStyles"),
+  });
+  const measure = (): Promise<unknown> =>
+    page.evaluate(() =>
+      Array.from(
+        document.querySelectorAll(
+          ".rm-ref-page-view-title, .rm-reference-item, .roam-block",
+        ),
+      ).map((el) => {
+        const { x, y, width, height } = el.getBoundingClientRect();
+        return { x, y, width, height };
+      }),
+    );
+  const native = await measure();
+  await page.evaluate(
+    "window.outlineControls.sync({enabled:true,pinnedUids:new Set()});window.controls.sync([],true)",
+  );
+  expect(await measure()).toEqual(native);
+  const outlinePin = await page
+    .locator(".roamjs-outline-pin-control > button")
+    .boundingBox();
+  const referencePins = await page
+    .locator(".roamjs-reference-pin-control > button")
+    .all();
+  expect(referencePins).toHaveLength(2);
+  for (const pin of referencePins)
+    expect((await pin.boundingBox())!.x).toBe(outlinePin!.x);
+  await page.evaluate("window.controls.sync([],false)");
+  expect(await measure()).toEqual(native);
+  await page.evaluate(
+    "window.controls.cleanup();window.outlineControls.cleanup()",
+  );
+  expect(await measure()).toEqual(native);
+});
+
+test("default title controls do not overlap wrapped source text in narrow views", async ({
+  page,
+}) => {
+  const title =
+    "Long source title with several words [[Target]] repeated to wrap across lines";
+  await setup(
+    page,
+    section("target123").replace(
+      '<div class="rm-title-arrow-wrapper">Source page</div>',
+      `<div class="flex-h-box rm-title-arrow-wrapper"><div class="rm-ref-page-view-title">${title}</div></div>`,
+    ),
+  );
+  await page.addStyleTag({
+    content: `
+    .flex-h-box { display: flex; }
+    .rm-title-arrow-wrapper { width: 300px; }
+    .rm-ref-page-view-title { min-width: 0; overflow-wrap: anywhere; }
+  `,
+  });
+  await page.evaluate("window.controls.sync([],false)");
+  const heading = page.locator(".rm-title-arrow-wrapper");
+  const button = await heading.getByRole("button").boundingBox();
+  expect(button!.height).toBeLessThanOrEqual(32);
+  const overlaps = await heading
+    .locator(".rm-ref-page-view-title")
+    .evaluate((el, pin) => {
+      const text = el.firstChild!;
+      let count = 0;
+      for (let i = 0; i < text.textContent!.length; i++) {
+        const range = document.createRange();
+        range.setStart(text, i);
+        range.setEnd(text, i + 1);
+        const r = range.getBoundingClientRect();
+        if (
+          r.right > pin!.x &&
+          r.left < pin!.x + pin!.width &&
+          r.bottom > pin!.y &&
+          r.top < pin!.y + pin!.height
+        )
+          count++;
+      }
+      return count;
+    }, button);
+  expect(overlaps).toBe(0);
 });
 
 test("pins render before lazy rows arrive, hide duplicates, and reveal native rows on unpin", async ({

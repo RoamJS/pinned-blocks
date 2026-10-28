@@ -14,14 +14,16 @@ import {
 } from "~/utils/referenceDetails";
 
 export const LINKED_REFERENCE_STYLES = `
-  .roamjs-reference-pin-row { display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: start; }
-  .roamjs-reference-pin-row > .rm-reference-item { grid-column: 1; width: auto; min-width: 0; }
-  .roamjs-reference-pin-control { display: contents; }
-  .roamjs-reference-pin-control > button { grid-column: 2; }
-  .roamjs-reference-pin-near-bullet.roamjs-reference-pin-row { grid-template-columns: 28px minmax(0, 1fr); }
-  .roamjs-reference-pin-near-bullet.roamjs-reference-pin-row > .rm-reference-item { grid-column: 2; grid-row: 1; }
-  .roamjs-reference-pin-near-bullet.roamjs-reference-pin-row > .roamjs-reference-pin-control > button { grid-column: 1; grid-row: 1; }
-  .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row > .roamjs-reference-pin-control { order: -1; margin-left: 0; }
+  .roamjs-reference-pin-row { display: flex; position: relative; align-items: flex-start; }
+  .roamjs-reference-pin-row > .rm-reference-item { flex: 1; min-width: 0; }
+  .roamjs-reference-pin-control { display: inline-flex; position: absolute; right: 0; top: 4px; }
+  /* Roam's row and heading gutters start 19px and 15px after outline controls. */
+  .roamjs-reference-pin-near-bullet.roamjs-reference-pin-row > .roamjs-reference-pin-control { left: -43px; right: auto; }
+  .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row > .roamjs-reference-pin-control { position: absolute; left: -39px; right: auto; margin-left: 0; }
+  #right-sidebar .roamjs-reference-pin-near-bullet.roamjs-reference-pin-row > .roamjs-reference-pin-control,
+  .roam-right-sidebar-content .roamjs-reference-pin-near-bullet.roamjs-reference-pin-row > .roamjs-reference-pin-control { left: -19px; }
+  #right-sidebar .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row > .roamjs-reference-pin-control,
+  .roam-right-sidebar-content .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row > .roamjs-reference-pin-control { left: -15px; }
   .roamjs-reference-pin-control > button[aria-pressed="false"][aria-busy="false"] { opacity: 0; pointer-events: none; }
   .roamjs-reference-pin-row:hover > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-row:focus-within > .roamjs-reference-pin-control > button,
@@ -29,9 +31,9 @@ export const LINKED_REFERENCE_STYLES = `
   .roamjs-reference-pin-title-row:focus-within > .roamjs-reference-pin-control > button { opacity: 1; pointer-events: auto; }
   .roamjs-reference-pin-page .rm-ref-page-view-title { min-width: 0; overflow-wrap: anywhere; }
   .roamjs-reference-pin-page .rm-caret { cursor: pointer; flex-shrink: 0; }
-  .roamjs-reference-pin-title-row { display: flex; align-items: center; }
-  .roamjs-reference-pin-title-row > .roamjs-reference-pin-control { display: inline-flex; margin-left: auto; }
-  .roamjs-reference-pin-active { margin: 0 4px 8px 12px; }
+  .roamjs-reference-pin-title-row { position: relative; }
+  .roamjs-reference-pin-title-row > .roamjs-reference-pin-control { position: static; margin-left: auto; flex-shrink: 0; align-self: center; top: 0; }
+  .roamjs-reference-pin-active { margin: 0 0 0 4px; }
   .roamjs-reference-pin-active > .rm-reference-item { background: var(--roamjs-reference-pin-background, rgba(137, 160, 179, 0.08)); }
   .roamjs-reference-pin-duplicate, .roamjs-reference-pin-empty-heading { display: none !important; }
 `;
@@ -148,7 +150,7 @@ const PinnedBlockGroup = ({
   const [expanded, setExpanded] = React.useState(true);
   return (
     <div className="rm-ref-page-view roamjs-reference-pin-page">
-      <div className="rm-title-arrow-wrapper roamjs-reference-pin-title-row">
+      <div className="flex-h-box rm-title-arrow-wrapper roamjs-reference-pin-title-row">
         <Icon
           icon="caret-down"
           className={`rm-caret ${expanded ? "rm-caret-open" : "rm-caret-closed"} rm-caret-showing`}
@@ -578,7 +580,7 @@ export const createLinkedReferenceControls = ({
                       data-reference-pin-uid={pin.blockUid}
                     >
                       <div
-                        className={`rm-title-arrow-wrapper roamjs-reference-pin-title-row ${nearBullets ? NEAR_BULLET_CLASS : ""}`}
+                        className={`flex-h-box rm-title-arrow-wrapper roamjs-reference-pin-title-row ${nearBullets ? NEAR_BULLET_CLASS : ""}`}
                       >
                         <Icon
                           icon="caret-down"

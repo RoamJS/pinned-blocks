@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Aligned linked-reference pins with outline pins while preserving Roam's native heading, bullet, and text alignment.
+
 - Added an optional setting to show pin and unpin controls near block bullets on hover or keyboard focus, in outlines and linked references.
 
 - Hid redundant collapsed source headings when matching child references are rendered by direct or ancestor pins, or filtered out, including source pages whose titles are not references.

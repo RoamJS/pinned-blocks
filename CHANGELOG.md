@@ -2,7 +2,7 @@
 
 ## 1.0.0
 
-- Made pin controls a visible light gray until hovered or pinned, with no button background.
+- Kept pin controls visible while moving between blocks and their pins. Unpinned controls stay light gray, pinned controls are dark gray, and button hover adds a subtle background.
 
 - Aligned linked-reference pins with outline pins while preserving Roam's native heading, bullet, and text alignment.
 

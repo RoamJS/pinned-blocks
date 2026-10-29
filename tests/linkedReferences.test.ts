@@ -474,7 +474,7 @@ test("a recreated empty sidebar reference list restores pins from its window ide
   ).toBeVisible();
 });
 
-test("reference pins use light and dark icons without backgrounds in either placement", async ({
+test("reference pins reserve dark icons for pinned state and highlight hover in either placement", async ({
   page,
 }) => {
   await setup(page, section("target123"));
@@ -497,9 +497,12 @@ test("reference pins use light and dark icons without backgrounds in either plac
     await button.hover();
     await expect(button.locator(".bp3-icon")).toHaveCSS(
       "color",
-      "rgb(92, 112, 128)",
+      "rgb(184, 196, 206)",
     );
-    await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(button).toHaveCSS(
+      "background-color",
+      "rgba(167, 182, 194, 0.15)",
+    );
     await page.evaluate(
       "window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])",
     );
@@ -511,6 +514,53 @@ test("reference pins use light and dark icons without backgrounds in either plac
     );
     await expect(pinned).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(pinned).toHaveCSS("box-shadow", "none");
+  }
+});
+
+test("near-bullet reference pins remain visible while crossing the gutter", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    section("target123").replace(
+      '<div class="rm-title-arrow-wrapper">Source page</div>',
+      '<div class="flex-h-box rm-title-arrow-wrapper"><div class="rm-ref-page-view-title">Title [[Target]]</div></div>',
+    ),
+  );
+  await page.addStyleTag({
+    path: "node_modules/@blueprintjs/core/lib/css/blueprint.css",
+  });
+  await page.addStyleTag({
+    content:
+      ".rm-reference-container { margin-left: 100px; } .rm-title-arrow-wrapper { display: flex; min-height: 24px; }",
+  });
+  await page.evaluate("window.controls.sync([], true)");
+  for (const selector of [
+    ".roamjs-reference-pin-row",
+    ".roamjs-reference-pin-title-row",
+  ]) {
+    const row = page.locator(selector);
+    const button = row.getByRole("button");
+    const rowBounds = (await row.boundingBox())!;
+    const buttonBounds = (await button.boundingBox())!;
+    const start = rowBounds.x + 4;
+    const end = buttonBounds.x + buttonBounds.width / 2;
+    const y = buttonBounds.y + buttonBounds.height / 2;
+    for (const x of [
+      ...Array.from(
+        { length: Math.ceil(start - end) + 1 },
+        (_, i) => start - i,
+      ),
+      ...Array.from({ length: Math.ceil(start - end) + 1 }, (_, i) => end + i),
+    ]) {
+      await page.mouse.move(x, y);
+      await expect(button).toHaveCSS("opacity", "1");
+    }
+    expect(await row.boundingBox()).toEqual(rowBounds);
+    await button.click();
+    await expect
+      .poll(() => page.evaluate("window.toggleCount"))
+      .toBeGreaterThan(0);
   }
 });
 

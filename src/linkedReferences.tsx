@@ -19,6 +19,12 @@ export const LINKED_REFERENCE_STYLES = `
   .roamjs-reference-pin-row { display: flex; position: relative; align-items: flex-start; }
   .roamjs-reference-pin-row > .rm-reference-item { flex: 1; min-width: 0; }
   .roamjs-reference-pin-control { display: inline-flex; position: absolute; right: 0; top: 4px; }
+  .roamjs-reference-pin-near-bullet::before { content: ""; position: absolute; top: 0; bottom: 0; right: 100%; width: 43px; }
+  .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row::before { width: 39px; }
+  #right-sidebar .roamjs-reference-pin-near-bullet::before,
+  .roam-right-sidebar-content .roamjs-reference-pin-near-bullet::before { width: 19px; }
+  #right-sidebar .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row::before,
+  .roam-right-sidebar-content .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row::before { width: 15px; }
   /* Roam's row and heading gutters start 19px and 15px after outline controls. */
   .roamjs-reference-pin-near-bullet.roamjs-reference-pin-row > .roamjs-reference-pin-control { left: -43px; right: auto; }
   .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row > .roamjs-reference-pin-control { position: absolute; left: -39px; right: auto; margin-left: 0; }

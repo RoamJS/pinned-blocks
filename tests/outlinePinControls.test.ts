@@ -29,7 +29,7 @@ const setup = async (page: Page): Promise<void> => {
   await page.addStyleTag({ content: await page.evaluate("window.styles") });
 };
 
-test("outline pins change icon color without a button background", async ({
+test("outline pins reserve dark icons for pinned state and highlight button hover", async ({
   page,
 }) => {
   await setup(page);
@@ -49,9 +49,12 @@ test("outline pins change icon color without a button background", async ({
     await expect(icon).toHaveCSS("color", "rgb(184, 196, 206)");
     await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await button.hover();
-    await expect(icon).toHaveCSS("color", "rgb(92, 112, 128)");
+    await expect(icon).toHaveCSS("color", "rgb(184, 196, 206)");
     await page.mouse.down();
-    await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(button).toHaveCSS(
+      "background-color",
+      "rgba(167, 182, 194, 0.15)",
+    );
     await page.mouse.up();
     await page.evaluate(
       "window.controls.sync({enabled:true,pinnedUids:new Set(['block1234'])})",
@@ -67,7 +70,45 @@ test("outline pins change icon color without a button background", async ({
     );
     await expect(pinned).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(pinned).toHaveCSS("box-shadow", "none");
+    await pinned.hover();
+    await expect(pinned.locator(".bp3-icon")).toHaveCSS(
+      "color",
+      "rgb(92, 112, 128)",
+    );
+    await expect(pinned).toHaveCSS(
+      "background-color",
+      "rgba(167, 182, 194, 0.15)",
+    );
   }
+});
+
+test("outline pins remain visible across the gap between the block and button", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.addStyleTag({
+    path: "node_modules/@blueprintjs/core/lib/css/blueprint.css",
+  });
+  await page.evaluate(
+    "window.controls.sync({enabled:true,pinnedUids:new Set()})",
+  );
+  const host = page.locator(".rm-block-main").first();
+  const button = host.getByRole("button");
+  const rowBounds = (await host.boundingBox())!;
+  const buttonBounds = (await button.boundingBox())!;
+  const y = buttonBounds.y + buttonBounds.height / 2;
+  const start = rowBounds.x + 4;
+  const end = buttonBounds.x + buttonBounds.width / 2;
+  for (const x of [
+    ...Array.from({ length: Math.ceil(start - end) + 1 }, (_, i) => start - i),
+    ...Array.from({ length: Math.ceil(start - end) + 1 }, (_, i) => end + i),
+  ]) {
+    await page.mouse.move(x, y);
+    await expect(button).toHaveCSS("opacity", "1");
+  }
+  expect(await host.boundingBox()).toEqual(rowBounds);
+  await button.click();
+  await expect.poll(() => page.evaluate("window.clicked")).toBe("block1234");
 });
 
 test("disabled mode preserves the outline; enabled buttons reveal on hover and focus", async ({

@@ -128,6 +128,8 @@ test("reference controls share the outline pin column without moving native cont
       }),
     );
   const native = await measure();
+  await page.evaluate("window.controls.sync([],false)");
+  const defaultLayout = await measure();
   await page.evaluate(
     "window.outlineControls.sync({enabled:true,pinnedUids:new Set()});window.controls.sync([],true)",
   );
@@ -142,11 +144,50 @@ test("reference controls share the outline pin column without moving native cont
   for (const pin of referencePins)
     expect((await pin.boundingBox())!.x).toBe(outlinePin!.x);
   await page.evaluate("window.controls.sync([],false)");
-  expect(await measure()).toEqual(native);
+  expect(await measure()).toEqual(defaultLayout);
   await page.evaluate(
     "window.controls.cleanup();window.outlineControls.cleanup()",
   );
   expect(await measure()).toEqual(native);
+});
+
+test("default reference-row pins reserve text space for native and pinned copies", async ({
+  page,
+}) => {
+  await setup(page, section("target123"));
+  await page.addStyleTag({
+    path: "node_modules/@blueprintjs/core/lib/css/blueprint.css",
+  });
+  await page.addStyleTag({
+    content: `
+    .rm-reference-container { margin-left: 64px; width: 300px; }
+    .roam-block-container { width: 100%; }
+    .roam-block { line-height: 24px; overflow-wrap: anywhere; }
+    .bp3-button.bp3-small { min-width: 24px; height: 24px; }
+  `,
+  });
+  await page.locator(".roam-block").evaluate((el) => {
+    el.textContent =
+      "A long linked reference with enough text to wrap across multiple lines and reach the right edge";
+  });
+  const row = page.getByTestId("row-target123-block1234");
+  await page.evaluate("window.controls.sync([],false)");
+  await row.hover();
+  const text = (await row.locator(".roam-block").boundingBox())!;
+  const button = (await row.getByRole("button").boundingBox())!;
+  expect(text.x + text.width).toBeLessThanOrEqual(button.x);
+  await page.evaluate("window.controls.sync([],true)");
+  expect((await row.locator(".roam-block").boundingBox())!.width).toBe(
+    text.width + 28,
+  );
+  await page.evaluate(
+    "window.controls.sync([{targetUid:'target123',blockUid:'block1234'}],false)",
+  );
+  const pinned = page.locator('[data-reference-pin-uid="block1234"]');
+  await pinned.getByRole("button").waitFor();
+  const item = (await pinned.locator(".rm-reference-item").boundingBox())!;
+  const pin = (await pinned.getByRole("button").boundingBox())!;
+  expect(item.x + item.width).toBeLessThanOrEqual(pin.x);
 });
 
 test("default title controls do not overlap wrapped source text in narrow views", async ({

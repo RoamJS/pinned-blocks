@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Reserved space for default right-side reference pins so they do not overlap long block text.
+
 - Centered outline and linked-reference row pins on their bullets and first text line.
 
 - Kept pin controls inside the main pane at narrow page widths without shifting page content or covering collapse carets.

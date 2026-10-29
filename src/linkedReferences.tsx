@@ -18,6 +18,7 @@ import {
 export const LINKED_REFERENCE_STYLES = `
   ${pinButtonStyles("roamjs-reference-pin-control")}
   .roamjs-reference-pin-row { display: flex; position: relative; align-items: flex-start; }
+  .roamjs-reference-pin-row:not(.roamjs-reference-pin-near-bullet) { padding-right: 28px; }
   .roamjs-reference-pin-row > .rm-reference-item { flex: 1; min-width: 0; }
   .roamjs-reference-pin-control { display: inline-flex; position: absolute; right: 0; top: 6px; }
   .roamjs-reference-pin-near-bullet::before { content: ""; position: absolute; top: 0; bottom: 0; right: 100%; width: 43px; }

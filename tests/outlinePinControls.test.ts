@@ -46,7 +46,7 @@ test("outline pins change icon color without a button background", async ({
     const button = page.getByRole("button", { name: "Pin block", exact: true });
     const icon = button.locator(".bp3-icon");
     await page.locator(".rm-block-main").first().hover();
-    await expect(icon).toHaveCSS("color", "rgb(245, 248, 250)");
+    await expect(icon).toHaveCSS("color", "rgb(184, 196, 206)");
     await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await button.hover();
     await expect(icon).toHaveCSS("color", "rgb(92, 112, 128)");

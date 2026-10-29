@@ -2,7 +2,7 @@ export const pinButtonStyles = (controlClass: string): string => `
   .${controlClass} > button.bp3-button.bp3-minimal {
     background: none !important;
     box-shadow: none !important;
-    color: #f5f8fa;
+    color: #b8c4ce;
   }
   .${controlClass} > button.bp3-button.bp3-minimal:hover,
   .${controlClass} > button.bp3-button.bp3-minimal:focus-visible,

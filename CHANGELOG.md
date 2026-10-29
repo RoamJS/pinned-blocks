@@ -2,7 +2,7 @@
 
 ## 1.0.0
 
-- Made pin controls light gray until hovered or pinned, with no button background.
+- Made pin controls a visible light gray until hovered or pinned, with no button background.
 
 - Aligned linked-reference pins with outline pins while preserving Roam's native heading, bullet, and text alignment.
 

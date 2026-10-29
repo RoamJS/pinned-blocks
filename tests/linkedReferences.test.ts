@@ -491,7 +491,7 @@ test("reference pins use light and dark icons without backgrounds in either plac
     await row.locator(".roam-block").hover();
     await expect(button.locator(".bp3-icon")).toHaveCSS(
       "color",
-      "rgb(245, 248, 250)",
+      "rgb(184, 196, 206)",
     );
     await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await button.hover();

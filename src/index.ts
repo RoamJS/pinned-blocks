@@ -10,6 +10,7 @@ import {
 } from "~/linkedReferences";
 import { getReferencePinKey, type ReferencePin } from "~/utils/referencePins";
 import { createAsyncLifecycle } from "~/utils/asyncLifecycle";
+import { createPinGutterBounds } from "~/pinGutterBounds";
 import { observePinStructure } from "~/utils/pinObserver";
 import {
   createOutlinePinControls,
@@ -412,6 +413,7 @@ const initializeExtension = async ({
     referenceControls.sync(referencePins, hoverPinControls);
     const pinnedUids = getPinnedUids(currentSettings);
     outlineControls.sync({ enabled: hoverPinControls, pinnedUids });
+    pinGutterBounds.refresh();
 
     document
       .querySelectorAll<HTMLElement>(`.${PINNED_BLOCK_CLASS}`)
@@ -761,6 +763,8 @@ const initializeExtension = async ({
     },
   });
 
+  const pinGutterBounds = createPinGutterBounds();
+
   const getFocusedUid = (): string | null =>
     window.roamAlphaAPI.ui.getFocusedBlock()?.["block-uid"] || null;
 
@@ -773,6 +777,7 @@ const initializeExtension = async ({
     mutationObserver?.disconnect();
     referenceControls.cleanup();
     outlineControls.cleanup();
+    pinGutterBounds.cleanup();
     enforceTimeouts.forEach((timeout) => window.clearTimeout(timeout));
     enforceTimeouts.clear();
     parentWatcherCleanups.forEach((cleanup) => cleanup());

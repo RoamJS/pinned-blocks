@@ -27,8 +27,8 @@ export const LINKED_REFERENCE_STYLES = `
   #right-sidebar .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row::before,
   .roam-right-sidebar-content .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row::before { width: 15px; }
   /* Roam's row and heading gutters start 19px and 15px after outline controls. */
-  .roamjs-reference-pin-near-bullet.roamjs-reference-pin-row > .roamjs-reference-pin-control { left: -43px; right: auto; }
-  .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row > .roamjs-reference-pin-control { position: absolute; left: -39px; right: auto; margin-left: 0; }
+  .roamjs-reference-pin-near-bullet.roamjs-reference-pin-row > .roamjs-reference-pin-control { left: calc(-43px + var(--roamjs-pin-edge-shift, 0px)); right: auto; }
+  .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row > .roamjs-reference-pin-control { position: absolute; left: calc(-39px + var(--roamjs-pin-edge-shift, 0px)); right: auto; margin-left: 0; }
   #right-sidebar .roamjs-reference-pin-near-bullet.roamjs-reference-pin-row > .roamjs-reference-pin-control,
   .roam-right-sidebar-content .roamjs-reference-pin-near-bullet.roamjs-reference-pin-row > .roamjs-reference-pin-control { left: -19px; }
   #right-sidebar .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row > .roamjs-reference-pin-control,

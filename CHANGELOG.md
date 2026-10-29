@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Kept pin controls inside the main pane at narrow page widths without shifting page content or covering collapse carets.
+
 - Kept pin controls visible while moving between blocks and their pins. Unpinned controls stay light gray, pinned controls are dark gray, and button hover adds a subtle background.
 
 - Aligned linked-reference pins with outline pins while preserving Roam's native heading, bullet, and text alignment.

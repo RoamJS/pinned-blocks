@@ -14,4 +14,10 @@ export const pinButtonStyles = (controlClass: string): string => `
   .${controlClass} > button.bp3-button.bp3-minimal[aria-pressed] > .bp3-icon {
     color: inherit;
   }
+  .roam-article[data-roamjs-pin-edge] .${controlClass} > button.bp3-button.bp3-minimal {
+    min-width: 18px;
+    width: 18px;
+    padding-left: 0;
+    padding-right: 0;
+  }
 `;

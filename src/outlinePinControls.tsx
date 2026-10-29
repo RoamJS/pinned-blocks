@@ -11,7 +11,7 @@ export const OUTLINE_PIN_STYLES = `
   ${pinButtonStyles(CONTROL_CLASS)}
   .${HOST_CLASS} { position: relative; }
   .${HOST_CLASS}::before { content: ""; position: absolute; top: 0; bottom: 0; left: -24px; width: 24px; }
-  .${HOST_CLASS} > .${CONTROL_CLASS} { position: absolute; left: -24px; top: 0; z-index: 1; }
+  .${HOST_CLASS} > .${CONTROL_CLASS} { position: absolute; left: calc(-24px + var(--roamjs-pin-edge-shift, 0px)); top: 0; z-index: 1; }
   #right-sidebar .${HOST_CLASS}, .roam-right-sidebar-content .${HOST_CLASS} { padding-left: 24px; }
   #right-sidebar .${HOST_CLASS} > .${CONTROL_CLASS}, .roam-right-sidebar-content .${HOST_CLASS} > .${CONTROL_CLASS} { left: 0; }
   .${CONTROL_CLASS} > button[aria-pressed="false"][aria-busy="false"] { opacity: 0; pointer-events: none; }

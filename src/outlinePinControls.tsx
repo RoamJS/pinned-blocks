@@ -1,11 +1,13 @@
 import React from "react";
 import ReactDOM from "react-dom";
 import { Button } from "@blueprintjs/core";
+import { pinButtonStyles } from "~/pinButtonStyles";
 
 const HOST_CLASS = "roamjs-outline-pin-host";
 const CONTROL_CLASS = "roamjs-outline-pin-control";
 
 export const OUTLINE_PIN_STYLES = `
+  ${pinButtonStyles(CONTROL_CLASS)}
   .${HOST_CLASS} { position: relative; }
   .${HOST_CLASS} > .${CONTROL_CLASS} { position: absolute; left: -24px; top: 0; z-index: 1; }
   #right-sidebar .${HOST_CLASS}, .roam-right-sidebar-content .${HOST_CLASS} { padding-left: 24px; }

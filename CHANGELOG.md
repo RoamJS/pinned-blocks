@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Made pin controls light gray until hovered or pinned, with no button background.
+
 - Aligned linked-reference pins with outline pins while preserving Roam's native heading, bullet, and text alignment.
 
 - Added an optional setting to show pin and unpin controls near block bullets on hover or keyboard focus, in outlines and linked references.

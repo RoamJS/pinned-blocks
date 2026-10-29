@@ -474,6 +474,46 @@ test("a recreated empty sidebar reference list restores pins from its window ide
   ).toBeVisible();
 });
 
+test("reference pins use light and dark icons without backgrounds in either placement", async ({
+  page,
+}) => {
+  await setup(page, section("target123"));
+  await page.addStyleTag({
+    content: ".rm-reference-container { margin-left: 64px; }",
+  });
+  await page.addStyleTag({
+    path: "node_modules/@blueprintjs/core/lib/css/blueprint.css",
+  });
+  for (const nearBullets of [false, true]) {
+    await page.evaluate(`window.controls.sync([], ${nearBullets})`);
+    const row = page.getByTestId("row-target123-block1234");
+    const button = row.getByRole("button");
+    await row.locator(".roam-block").hover();
+    await expect(button.locator(".bp3-icon")).toHaveCSS(
+      "color",
+      "rgb(245, 248, 250)",
+    );
+    await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await button.hover();
+    await expect(button.locator(".bp3-icon")).toHaveCSS(
+      "color",
+      "rgb(92, 112, 128)",
+    );
+    await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await page.evaluate(
+      "window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])",
+    );
+    await page.mouse.move(0, 0);
+    const pinned = page.getByRole("button", { name: "Unpin linked reference" });
+    await expect(pinned.locator(".bp3-icon")).toHaveCSS(
+      "color",
+      "rgb(92, 112, 128)",
+    );
+    await expect(pinned).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(pinned).toHaveCSS("box-shadow", "none");
+  }
+});
+
 test("inactive pins reveal on row hover and keyboard focus without moving content", async ({
   page,
 }) => {

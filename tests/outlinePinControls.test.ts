@@ -29,6 +29,47 @@ const setup = async (page: Page): Promise<void> => {
   await page.addStyleTag({ content: await page.evaluate("window.styles") });
 };
 
+test("outline pins change icon color without a button background", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.addStyleTag({
+    path: "node_modules/@blueprintjs/core/lib/css/blueprint.css",
+  });
+  for (const dark of [false, true]) {
+    await page.evaluate((enabled) => {
+      document.body.classList.toggle("bp3-dark", enabled);
+    }, dark);
+    await page.evaluate(
+      "window.controls.sync({enabled:true,pinnedUids:new Set()})",
+    );
+    const button = page.getByRole("button", { name: "Pin block", exact: true });
+    const icon = button.locator(".bp3-icon");
+    await page.locator(".rm-block-main").first().hover();
+    await expect(icon).toHaveCSS("color", "rgb(245, 248, 250)");
+    await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await button.hover();
+    await expect(icon).toHaveCSS("color", "rgb(92, 112, 128)");
+    await page.mouse.down();
+    await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await page.mouse.up();
+    await page.evaluate(
+      "window.controls.sync({enabled:true,pinnedUids:new Set(['block1234'])})",
+    );
+    await page.locator("#outside").hover();
+    const pinned = page.getByRole("button", {
+      name: "Unpin block",
+      exact: true,
+    });
+    await expect(pinned.locator(".bp3-icon")).toHaveCSS(
+      "color",
+      "rgb(92, 112, 128)",
+    );
+    await expect(pinned).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(pinned).toHaveCSS("box-shadow", "none");
+  }
+});
+
 test("disabled mode preserves the outline; enabled buttons reveal on hover and focus", async ({
   page,
 }) => {

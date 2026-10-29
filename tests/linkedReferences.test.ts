@@ -7,7 +7,10 @@ test.use({
 const script = buildSync({
   stdin: {
     contents: `import { createLinkedReferenceControls, LINKED_REFERENCE_STYLES } from "./src/linkedReferences";
+    import { createOutlinePinControls, OUTLINE_PIN_STYLES } from "./src/outlinePinControls";
     window.referencePinStyles = LINKED_REFERENCE_STYLES;
+    window.outlinePinStyles = OUTLINE_PIN_STYLES;
+    window.outlineControls = createOutlinePinControls({togglePin: async () => {}});
     window.filters = {};
     window.roamAlphaAPI = { data: { fast: { q: () => [['title1234']] } }, ui: { rightSidebar: { getWindows: () => [{type:"mentions", "window-id":"sidebar-mentions-target123", "page-uid":"target123"}] }, filters: {
       getGlobalFilters: () => ({}), getPageLinkedRefsFilters: () => window.filters,
@@ -47,6 +50,191 @@ const setup = async (
     content: await page.evaluate("window.referencePinStyles"),
   });
 };
+
+test("optional near-bullet placement applies to native and pinned reference controls and restores defaults", async ({
+  page,
+}) => {
+  await setup(page, section("target123"));
+  await page.addStyleTag({
+    content: ".rm-reference-container { margin-left: 64px; }",
+  });
+  const row = page.getByTestId("row-target123-block1234");
+  await page.evaluate("window.controls.sync([],true)");
+  const button = row.getByRole("button");
+  await row.hover();
+  expect((await button.boundingBox())!.x).toBeLessThan(
+    (await row.boundingBox())!.x,
+  );
+  await button.click();
+  expect(await page.evaluate("window.clickedPin")).toEqual({
+    targetUid: "target123",
+    blockUid: "block1234",
+  });
+  await page.evaluate(
+    "window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])",
+  );
+  const pinned = page.locator('[data-reference-pin-uid="block1234"]');
+  expect((await pinned.getByRole("button").boundingBox())!.x).toBeLessThan(
+    (await pinned.boundingBox())!.x,
+  );
+  await pinned.getByRole("button").click();
+  await page.evaluate("window.controls.sync([],false)");
+  await row.hover();
+  expect((await row.getByRole("button").boundingBox())!.x).toBeGreaterThan(
+    (await row.boundingBox())!.x,
+  );
+  await expect(page.locator(".roamjs-reference-pin-near-bullet")).toHaveCount(
+    0,
+  );
+});
+
+test("reference controls share the outline pin column without moving native content", async ({
+  page,
+}) => {
+  const nativeSection = section("target123").replace(
+    '<div class="rm-title-arrow-wrapper">Source page</div>',
+    '<div class="flex-h-box rm-title-arrow-wrapper"><span class="rm-caret"></span><div class="rm-ref-page-view-title">Title [[Target]]</div></div>',
+  );
+  await setup(
+    page,
+    `<div class="roam-article"><div class="roam-block-container"><div class="rm-block-main"><div class="controls">•</div><div class="roam-block" id="block-input-outline12">Outline block</div></div></div>${nativeSection}</div>`,
+  );
+  await page.addStyleTag({
+    content: `
+    .roam-article { margin-left: 100px; width: 600px; }
+    .flex-h-box, .rm-block-main { display: flex; }
+    .rm-block-main { margin-left: -27px; }
+    .controls { flex: 0 0 27px; }
+    .roam-block { flex: 1; min-width: 0; }
+    .rm-mentions { margin-left: -12px; }
+    .rm-title-arrow-wrapper { min-height: 24px; line-height: 24px; }
+    .rm-ref-page-view > div:last-child { margin-left: 4px; }
+    .rm-reference-item { flex: 1; margin: 4px 0 4px 8px; padding-right: 8px; }
+    .rm-reference-item .rm-block-main { margin-left: 0; }
+  `,
+  });
+  await page.addStyleTag({
+    content: await page.evaluate("window.outlinePinStyles"),
+  });
+  const measure = (): Promise<unknown> =>
+    page.evaluate(() =>
+      Array.from(
+        document.querySelectorAll(
+          ".rm-ref-page-view-title, .rm-reference-item, .roam-block",
+        ),
+      ).map((el) => {
+        const { x, y, width, height } = el.getBoundingClientRect();
+        return { x, y, width, height };
+      }),
+    );
+  const native = await measure();
+  await page.evaluate("window.controls.sync([],false)");
+  const defaultLayout = await measure();
+  await page.evaluate(
+    "window.outlineControls.sync({enabled:true,pinnedUids:new Set()});window.controls.sync([],true)",
+  );
+  expect(await measure()).toEqual(native);
+  const outlinePin = await page
+    .locator(".roamjs-outline-pin-control > button")
+    .boundingBox();
+  const referencePins = await page
+    .locator(".roamjs-reference-pin-control > button")
+    .all();
+  expect(referencePins).toHaveLength(2);
+  for (const pin of referencePins)
+    expect((await pin.boundingBox())!.x).toBe(outlinePin!.x);
+  await page.evaluate("window.controls.sync([],false)");
+  expect(await measure()).toEqual(defaultLayout);
+  await page.evaluate(
+    "window.controls.cleanup();window.outlineControls.cleanup()",
+  );
+  expect(await measure()).toEqual(native);
+});
+
+test("default reference-row pins reserve text space for native and pinned copies", async ({
+  page,
+}) => {
+  await setup(page, section("target123"));
+  await page.addStyleTag({
+    path: "node_modules/@blueprintjs/core/lib/css/blueprint.css",
+  });
+  await page.addStyleTag({
+    content: `
+    .rm-reference-container { margin-left: 64px; width: 300px; }
+    .roam-block-container { width: 100%; }
+    .roam-block { line-height: 24px; overflow-wrap: anywhere; }
+    .bp3-button.bp3-small { min-width: 24px; height: 24px; }
+  `,
+  });
+  await page.locator(".roam-block").evaluate((el) => {
+    el.textContent =
+      "A long linked reference with enough text to wrap across multiple lines and reach the right edge";
+  });
+  const row = page.getByTestId("row-target123-block1234");
+  await page.evaluate("window.controls.sync([],false)");
+  await row.hover();
+  const text = (await row.locator(".roam-block").boundingBox())!;
+  const button = (await row.getByRole("button").boundingBox())!;
+  expect(text.x + text.width).toBeLessThanOrEqual(button.x);
+  await page.evaluate("window.controls.sync([],true)");
+  expect((await row.locator(".roam-block").boundingBox())!.width).toBe(
+    text.width + 28,
+  );
+  await page.evaluate(
+    "window.controls.sync([{targetUid:'target123',blockUid:'block1234'}],false)",
+  );
+  const pinned = page.locator('[data-reference-pin-uid="block1234"]');
+  await pinned.getByRole("button").waitFor();
+  const item = (await pinned.locator(".rm-reference-item").boundingBox())!;
+  const pin = (await pinned.getByRole("button").boundingBox())!;
+  expect(item.x + item.width).toBeLessThanOrEqual(pin.x);
+});
+
+test("default title controls do not overlap wrapped source text in narrow views", async ({
+  page,
+}) => {
+  const title =
+    "Long source title with several words [[Target]] repeated to wrap across lines";
+  await setup(
+    page,
+    section("target123").replace(
+      '<div class="rm-title-arrow-wrapper">Source page</div>',
+      `<div class="flex-h-box rm-title-arrow-wrapper"><div class="rm-ref-page-view-title">${title}</div></div>`,
+    ),
+  );
+  await page.addStyleTag({
+    content: `
+    .flex-h-box { display: flex; }
+    .rm-title-arrow-wrapper { width: 300px; }
+    .rm-ref-page-view-title { min-width: 0; overflow-wrap: anywhere; }
+  `,
+  });
+  await page.evaluate("window.controls.sync([],false)");
+  const heading = page.locator(".rm-title-arrow-wrapper");
+  const button = await heading.getByRole("button").boundingBox();
+  expect(button!.height).toBeLessThanOrEqual(32);
+  const overlaps = await heading
+    .locator(".rm-ref-page-view-title")
+    .evaluate((el, pin) => {
+      const text = el.firstChild!;
+      let count = 0;
+      for (let i = 0; i < text.textContent!.length; i++) {
+        const range = document.createRange();
+        range.setStart(text, i);
+        range.setEnd(text, i + 1);
+        const r = range.getBoundingClientRect();
+        if (
+          r.right > pin!.x &&
+          r.left < pin!.x + pin!.width &&
+          r.bottom > pin!.y &&
+          r.top < pin!.y + pin!.height
+        )
+          count++;
+      }
+      return count;
+    }, button);
+  expect(overlaps).toBe(0);
+});
 
 test("pins render before lazy rows arrive, hide duplicates, and reveal native rows on unpin", async ({
   page,
@@ -325,6 +513,164 @@ test("a recreated empty sidebar reference list restores pins from its window ide
   await expect(
     page.locator('[data-reference-pin-uid="block1234"]'),
   ).toBeVisible();
+});
+
+test("reference pins reserve dark icons for pinned state and highlight hover in either placement", async ({
+  page,
+}) => {
+  await setup(page, section("target123"));
+  await page.addStyleTag({
+    content: ".rm-reference-container { margin-left: 64px; }",
+  });
+  await page.addStyleTag({
+    path: "node_modules/@blueprintjs/core/lib/css/blueprint.css",
+  });
+  for (const nearBullets of [false, true]) {
+    await page.evaluate(`window.controls.sync([], ${nearBullets})`);
+    const row = page.getByTestId("row-target123-block1234");
+    const button = row.getByRole("button");
+    await row.locator(".roam-block").hover();
+    await expect(button.locator(".bp3-icon")).toHaveCSS(
+      "color",
+      "rgb(184, 196, 206)",
+    );
+    await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await button.hover();
+    await expect(button.locator(".bp3-icon")).toHaveCSS(
+      "color",
+      "rgb(184, 196, 206)",
+    );
+    await expect(button).toHaveCSS(
+      "background-color",
+      "rgba(167, 182, 194, 0.15)",
+    );
+    await page.evaluate(
+      "window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])",
+    );
+    await page.mouse.move(0, 0);
+    const pinned = page.getByRole("button", { name: "Unpin linked reference" });
+    await expect(pinned.locator(".bp3-icon")).toHaveCSS(
+      "color",
+      "rgb(92, 112, 128)",
+    );
+    await expect(pinned).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(pinned).toHaveCSS("box-shadow", "none");
+  }
+});
+
+test("near-bullet reference pins remain visible while crossing the gutter", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    section("target123").replace(
+      '<div class="rm-title-arrow-wrapper">Source page</div>',
+      '<div class="flex-h-box rm-title-arrow-wrapper"><div class="rm-ref-page-view-title">Title [[Target]]</div></div>',
+    ),
+  );
+  await page.addStyleTag({
+    path: "node_modules/@blueprintjs/core/lib/css/blueprint.css",
+  });
+  await page.addStyleTag({
+    content:
+      ".rm-reference-container { margin-left: 100px; } .rm-title-arrow-wrapper { display: flex; min-height: 24px; } .rm-reference-item { margin: 4px 0; min-height: 28px; }",
+  });
+  await page.evaluate("window.controls.sync([], true)");
+  for (const selector of [
+    ".roamjs-reference-pin-row",
+    ".roamjs-reference-pin-title-row",
+  ]) {
+    const row = page.locator(selector);
+    const button = row.getByRole("button");
+    const rowBounds = (await row.boundingBox())!;
+    const buttonBounds = (await button.boundingBox())!;
+    const start = rowBounds.x + 4;
+    const end = buttonBounds.x + buttonBounds.width / 2;
+    const y = buttonBounds.y + buttonBounds.height / 2;
+    await page.evaluate(({ x, y, height }) => {
+      document.querySelector(".rm-multibar")?.remove();
+      const guide = document.createElement("div");
+      guide.className = "rm-multibar";
+      Object.assign(guide.style, {
+        position: "absolute",
+        left: `${x - 6}px`,
+        top: `${y}px`,
+        width: "8px",
+        height: `${height}px`,
+        zIndex: "10",
+      });
+      guide.onclick = (): void => {
+        guide.dataset.clicked = "true";
+      };
+      document.body.append(guide);
+    }, rowBounds);
+    for (const x of [
+      ...Array.from(
+        { length: Math.ceil(start - end) + 1 },
+        (_, i) => start - i,
+      ),
+      ...Array.from({ length: Math.ceil(start - end) + 1 }, (_, i) => end + i),
+    ]) {
+      await page.mouse.move(x, y);
+      await expect(button).toHaveCSS("opacity", "1");
+    }
+    expect(await row.boundingBox()).toEqual(rowBounds);
+    await page.mouse.click(rowBounds.x, y);
+    await expect(page.locator(".rm-multibar")).toHaveAttribute(
+      "data-clicked",
+      "true",
+    );
+    await expect(button).toHaveCSS("opacity", "1");
+    await button.click();
+    await expect
+      .poll(() => page.evaluate("window.toggleCount"))
+      .toBeGreaterThan(0);
+  }
+});
+
+test("reference row pins center on first-line bullets in either placement, including wrapped text", async ({
+  page,
+}) => {
+  await setup(page, section("target123"));
+  await page.addStyleTag({
+    path: "node_modules/@blueprintjs/core/lib/css/blueprint.css",
+  });
+  await page.locator(".rm-block-main").evaluate((el) => {
+    el.insertAdjacentHTML(
+      "afterbegin",
+      '<span class="controls"><span class="rm-bullet__inner">•</span></span>',
+    );
+  });
+  await page.addStyleTag({
+    content: `
+    .rm-reference-container { margin-left: 64px; width: 240px; }
+    .rm-reference-item { margin: 4px 0; }
+    .rm-block-main { display: flex; min-height: 28px; }
+    .controls { display: flex; align-items: center; height: 28px; flex: 0 0 27px; }
+    .rm-bullet__inner { height: 13px; line-height: 13px; }
+    .roam-block { flex: 1; min-width: 0; line-height: 28px; }
+    .bp3-button.bp3-small { min-height: 24px; height: 24px; }
+  `,
+  });
+  const row = page.getByTestId("row-target123-block1234");
+  for (const nearBullets of [false, true]) {
+    await page.evaluate(`window.controls.sync([], ${nearBullets})`);
+    for (const text of [
+      "One line",
+      "A linked reference wrapping onto several lines while its pin stays on the first line",
+    ]) {
+      await row.locator(".roam-block").evaluate((el, text) => {
+        el.textContent = text;
+      }, text);
+      const bullet = (await row.locator(".rm-bullet__inner").boundingBox())!;
+      const button = row.getByRole("button");
+      await row.hover();
+      for (const element of [button, button.locator(".bp3-icon")]) {
+        const box = (await element.boundingBox())!;
+        expect(box.y + box.height / 2).toBe(bullet.y + bullet.height / 2);
+      }
+    }
+  }
 });
 
 test("inactive pins reveal on row hover and keyboard focus without moving content", async ({

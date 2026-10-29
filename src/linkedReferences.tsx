@@ -1,6 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom";
 import { Button, Icon } from "@blueprintjs/core";
+import { pinButtonStyles } from "~/pinButtonStyles";
+import { createPinHoverBridge } from "~/pinHoverBridge";
 import {
   getReferencePinKey,
   getReferenceTargetUid,
@@ -14,25 +16,42 @@ import {
 } from "~/utils/referenceDetails";
 
 export const LINKED_REFERENCE_STYLES = `
-  .roamjs-reference-pin-row { display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: start; }
-  .roamjs-reference-pin-row > .rm-reference-item { grid-column: 1; width: auto; min-width: 0; }
-  .roamjs-reference-pin-control { display: contents; }
-  .roamjs-reference-pin-control > button { grid-column: 2; }
+  ${pinButtonStyles("roamjs-reference-pin-control")}
+  .roamjs-reference-pin-row { display: flex; position: relative; align-items: flex-start; }
+  .roamjs-reference-pin-row:not(.roamjs-reference-pin-near-bullet) { padding-right: 28px; }
+  .roamjs-reference-pin-row > .rm-reference-item { flex: 1; min-width: 0; }
+  .roamjs-reference-pin-control { display: inline-flex; position: absolute; right: 0; top: 6px; }
+  .roamjs-reference-pin-near-bullet::before { content: ""; position: absolute; top: 0; bottom: 0; right: 100%; width: 43px; }
+  .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row::before { width: 39px; }
+  #right-sidebar .roamjs-reference-pin-near-bullet::before,
+  .roam-right-sidebar-content .roamjs-reference-pin-near-bullet::before { width: 19px; }
+  #right-sidebar .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row::before,
+  .roam-right-sidebar-content .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row::before { width: 15px; }
+  /* Roam's row and heading gutters start 19px and 15px after outline controls. */
+  .roamjs-reference-pin-near-bullet.roamjs-reference-pin-row > .roamjs-reference-pin-control { left: calc(-43px + var(--roamjs-pin-edge-shift, 0px)); right: auto; }
+  .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row > .roamjs-reference-pin-control { position: absolute; left: calc(-39px + var(--roamjs-pin-edge-shift, 0px)); right: auto; margin-left: 0; }
+  #right-sidebar .roamjs-reference-pin-near-bullet.roamjs-reference-pin-row > .roamjs-reference-pin-control,
+  .roam-right-sidebar-content .roamjs-reference-pin-near-bullet.roamjs-reference-pin-row > .roamjs-reference-pin-control { left: -19px; }
+  #right-sidebar .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row > .roamjs-reference-pin-control,
+  .roam-right-sidebar-content .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row > .roamjs-reference-pin-control { left: -15px; }
   .roamjs-reference-pin-control > button[aria-pressed="false"][aria-busy="false"] { opacity: 0; pointer-events: none; }
   .roamjs-reference-pin-row:hover > .roamjs-reference-pin-control > button,
+  .roamjs-reference-pin-row[data-roamjs-pin-hover] > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-row:focus-within > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-title-row:hover > .roamjs-reference-pin-control > button,
+  .roamjs-reference-pin-title-row[data-roamjs-pin-hover] > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-title-row:focus-within > .roamjs-reference-pin-control > button { opacity: 1; pointer-events: auto; }
   .roamjs-reference-pin-page .rm-ref-page-view-title { min-width: 0; overflow-wrap: anywhere; }
   .roamjs-reference-pin-page .rm-caret { cursor: pointer; flex-shrink: 0; }
-  .roamjs-reference-pin-title-row { display: flex; align-items: center; }
-  .roamjs-reference-pin-title-row > .roamjs-reference-pin-control { display: inline-flex; margin-left: auto; }
-  .roamjs-reference-pin-active { margin: 0 4px 8px 12px; }
+  .roamjs-reference-pin-title-row { position: relative; }
+  .roamjs-reference-pin-title-row > .roamjs-reference-pin-control { position: static; margin-left: auto; flex-shrink: 0; align-self: center; top: 0; }
+  .roamjs-reference-pin-active { margin: 0 0 0 4px; }
   .roamjs-reference-pin-active > .rm-reference-item { background: var(--roamjs-reference-pin-background, rgba(137, 160, 179, 0.08)); }
   .roamjs-reference-pin-duplicate, .roamjs-reference-pin-empty-heading { display: none !important; }
 `;
 const CONTROL_CLASS = "roamjs-reference-pin-control";
 const ROW_CLASS = "roamjs-reference-pin-row";
+const NEAR_BULLET_CLASS = "roamjs-reference-pin-near-bullet";
 const DUPLICATE_CLASS = "roamjs-reference-pin-duplicate";
 const EMPTY_HEADING_CLASS = "roamjs-reference-pin-empty-heading";
 const PANEL_CLASS = "roamjs-reference-pin-panel";
@@ -143,7 +162,7 @@ const PinnedBlockGroup = ({
   const [expanded, setExpanded] = React.useState(true);
   return (
     <div className="rm-ref-page-view roamjs-reference-pin-page">
-      <div className="rm-title-arrow-wrapper roamjs-reference-pin-title-row">
+      <div className="flex-h-box rm-title-arrow-wrapper roamjs-reference-pin-title-row">
         <Icon
           icon="caret-down"
           className={`rm-caret ${expanded ? "rm-caret-open" : "rm-caret-closed"} rm-caret-showing`}
@@ -249,8 +268,14 @@ export const createLinkedReferenceControls = ({
   readReference?: (pin: ReferencePin) => ReferenceDetails | null;
   renderBlock?: RenderBlock;
   unmountBlock?: UnmountBlock;
-}): { sync: (pins: ReferencePin[]) => void; cleanup: () => void } => {
+}): {
+  sync: (pins: ReferencePin[], nearBullets?: boolean) => void;
+  cleanup: () => void;
+} => {
   const controls = new Map<HTMLElement, MountedControl>();
+  const hoverBridge = createPinHoverBridge(
+    ".roamjs-reference-pin-row, .roamjs-reference-pin-title-row",
+  );
   const panels = new Map<HTMLElement, MountedPanel>();
   const decorated = new Set<HTMLElement>();
   const targets = new WeakMap<HTMLElement, string>();
@@ -261,6 +286,7 @@ export const createLinkedReferenceControls = ({
   const resolvingTargets = new WeakMap<HTMLElement, { url: string }>();
   const pendingKeys = new Set<string>();
   let latestPins: ReferencePin[] = [];
+  let latestNearBullets = false;
   let inactive = false;
   const decorate = (
     element: HTMLElement,
@@ -359,7 +385,11 @@ export const createLinkedReferenceControls = ({
       : api.getPageLinkedRefsFilters({ page: { uid: targetUid } });
     return [api.getGlobalFilters(), local];
   };
-  const sync = (pins: ReferencePin[]): void => {
+  const sync = (
+    pins: ReferencePin[],
+    nearBullets = latestNearBullets,
+  ): void => {
+    latestNearBullets = nearBullets;
     if (inactive) return;
     latestPins = pins;
     const activeRows = new Set<HTMLElement>();
@@ -546,6 +576,7 @@ export const createLinkedReferenceControls = ({
           if (!shownKeys.has(key)) panel.renderedKeys.delete(key);
         });
         const signature = JSON.stringify([
+          nearBullets,
           entries.map((entry) => [
             entry,
             pendingKeys.has(getReferencePinKey(entry)),
@@ -563,7 +594,9 @@ export const createLinkedReferenceControls = ({
                       className="rm-ref-page-view roamjs-reference-pin-page"
                       data-reference-pin-uid={pin.blockUid}
                     >
-                      <div className="rm-title-arrow-wrapper roamjs-reference-pin-title-row">
+                      <div
+                        className={`flex-h-box rm-title-arrow-wrapper roamjs-reference-pin-title-row ${nearBullets ? NEAR_BULLET_CLASS : ""}`}
+                      >
                         <Icon
                           icon="caret-down"
                           className={`rm-caret ${pin.pageExpanded ? "rm-caret-open" : "rm-caret-closed"} rm-caret-showing`}
@@ -620,7 +653,7 @@ export const createLinkedReferenceControls = ({
                       uid={pin.sourceUid}
                     >
                       <div
-                        className={`${ROW_CLASS} roamjs-reference-pin-active`}
+                        className={`${ROW_CLASS} roamjs-reference-pin-active ${nearBullets ? NEAR_BULLET_CLASS : ""}`}
                         data-reference-pin-uid={pin.blockUid}
                       >
                         <div className="rm-reference-item">
@@ -717,6 +750,7 @@ export const createLinkedReferenceControls = ({
       };
       rows.forEach(({ row, pin }) => {
         activeRows.add(row);
+        row.classList.toggle(NEAR_BULLET_CLASS, nearBullets);
         const isTitle = row.classList.contains("rm-title-arrow-wrapper");
         decorate(
           row,
@@ -802,6 +836,7 @@ export const createLinkedReferenceControls = ({
       if (!activeDecorations.has(element)) {
         element.classList.remove(
           ROW_CLASS,
+          NEAR_BULLET_CLASS,
           "roamjs-reference-pin-title-row",
           DUPLICATE_CLASS,
           EMPTY_HEADING_CLASS,
@@ -831,12 +866,14 @@ export const createLinkedReferenceControls = ({
     sync,
     cleanup: (): void => {
       inactive = true;
+      hoverBridge.cleanup();
       window.clearInterval(filterPoll);
       controls.forEach((control, row) => removeControl(row, control));
       panels.forEach((panel, list) => removePanel(list, panel));
       decorated.forEach((element) =>
         element.classList.remove(
           ROW_CLASS,
+          NEAR_BULLET_CLASS,
           "roamjs-reference-pin-title-row",
           DUPLICATE_CLASS,
           EMPTY_HEADING_CLASS,

@@ -546,6 +546,23 @@ test("near-bullet reference pins remain visible while crossing the gutter", asyn
     const start = rowBounds.x + 4;
     const end = buttonBounds.x + buttonBounds.width / 2;
     const y = buttonBounds.y + buttonBounds.height / 2;
+    await page.evaluate(({ x, y, height }) => {
+      document.querySelector(".rm-multibar")?.remove();
+      const guide = document.createElement("div");
+      guide.className = "rm-multibar";
+      Object.assign(guide.style, {
+        position: "absolute",
+        left: `${x - 6}px`,
+        top: `${y}px`,
+        width: "8px",
+        height: `${height}px`,
+        zIndex: "10",
+      });
+      guide.onclick = (): void => {
+        guide.dataset.clicked = "true";
+      };
+      document.body.append(guide);
+    }, rowBounds);
     for (const x of [
       ...Array.from(
         { length: Math.ceil(start - end) + 1 },
@@ -557,6 +574,12 @@ test("near-bullet reference pins remain visible while crossing the gutter", asyn
       await expect(button).toHaveCSS("opacity", "1");
     }
     expect(await row.boundingBox()).toEqual(rowBounds);
+    await page.mouse.click(rowBounds.x, y);
+    await expect(page.locator(".rm-multibar")).toHaveAttribute(
+      "data-clicked",
+      "true",
+    );
+    await expect(button).toHaveCSS("opacity", "1");
     await button.click();
     await expect
       .poll(() => page.evaluate("window.toggleCount"))

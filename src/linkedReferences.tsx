@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom";
 import { Button, Icon } from "@blueprintjs/core";
 import { pinButtonStyles } from "~/pinButtonStyles";
+import { createPinHoverBridge } from "~/pinHoverBridge";
 import {
   getReferencePinKey,
   getReferenceTargetUid,
@@ -34,8 +35,10 @@ export const LINKED_REFERENCE_STYLES = `
   .roam-right-sidebar-content .roamjs-reference-pin-near-bullet.roamjs-reference-pin-title-row > .roamjs-reference-pin-control { left: -15px; }
   .roamjs-reference-pin-control > button[aria-pressed="false"][aria-busy="false"] { opacity: 0; pointer-events: none; }
   .roamjs-reference-pin-row:hover > .roamjs-reference-pin-control > button,
+  .roamjs-reference-pin-row[data-roamjs-pin-hover] > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-row:focus-within > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-title-row:hover > .roamjs-reference-pin-control > button,
+  .roamjs-reference-pin-title-row[data-roamjs-pin-hover] > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-title-row:focus-within > .roamjs-reference-pin-control > button { opacity: 1; pointer-events: auto; }
   .roamjs-reference-pin-page .rm-ref-page-view-title { min-width: 0; overflow-wrap: anywhere; }
   .roamjs-reference-pin-page .rm-caret { cursor: pointer; flex-shrink: 0; }
@@ -269,6 +272,9 @@ export const createLinkedReferenceControls = ({
   cleanup: () => void;
 } => {
   const controls = new Map<HTMLElement, MountedControl>();
+  const hoverBridge = createPinHoverBridge(
+    ".roamjs-reference-pin-row, .roamjs-reference-pin-title-row",
+  );
   const panels = new Map<HTMLElement, MountedPanel>();
   const decorated = new Set<HTMLElement>();
   const targets = new WeakMap<HTMLElement, string>();
@@ -859,6 +865,7 @@ export const createLinkedReferenceControls = ({
     sync,
     cleanup: (): void => {
       inactive = true;
+      hoverBridge.cleanup();
       window.clearInterval(filterPoll);
       controls.forEach((control, row) => removeControl(row, control));
       panels.forEach((panel, list) => removePanel(list, panel));

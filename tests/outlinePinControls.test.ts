@@ -99,6 +99,22 @@ test("outline pins remain visible across the gap between the block and button", 
   const y = buttonBounds.y + buttonBounds.height / 2;
   const start = rowBounds.x + 4;
   const end = buttonBounds.x + buttonBounds.width / 2;
+  await page.evaluate(({ x, y, height }) => {
+    const guide = document.createElement("div");
+    guide.className = "rm-multibar";
+    Object.assign(guide.style, {
+      position: "absolute",
+      left: `${x - 6}px`,
+      top: `${y}px`,
+      width: "8px",
+      height: `${height}px`,
+      zIndex: "10",
+    });
+    guide.onclick = (): void => {
+      guide.dataset.clicked = "true";
+    };
+    document.body.append(guide);
+  }, rowBounds);
   for (const x of [
     ...Array.from({ length: Math.ceil(start - end) + 1 }, (_, i) => start - i),
     ...Array.from({ length: Math.ceil(start - end) + 1 }, (_, i) => end + i),
@@ -107,8 +123,18 @@ test("outline pins remain visible across the gap between the block and button", 
     await expect(button).toHaveCSS("opacity", "1");
   }
   expect(await host.boundingBox()).toEqual(rowBounds);
+  await page.mouse.click(rowBounds.x, y);
+  await expect(page.locator(".rm-multibar")).toHaveAttribute(
+    "data-clicked",
+    "true",
+  );
+  await expect(button).toHaveCSS("opacity", "1");
   await button.click();
   await expect.poll(() => page.evaluate("window.clicked")).toBe("block1234");
+  await page.mouse.move(rowBounds.x, y);
+  await expect(host).toHaveAttribute("data-roamjs-pin-hover", "true");
+  await page.evaluate("window.controls.cleanup()");
+  await expect(page.locator("[data-roamjs-pin-hover]")).toHaveCount(0);
 });
 
 test("disabled mode preserves the outline; enabled buttons reveal on hover and focus", async ({

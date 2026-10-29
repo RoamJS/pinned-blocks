@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom";
 import { Button } from "@blueprintjs/core";
 import { pinButtonStyles } from "~/pinButtonStyles";
+import { createPinHoverBridge } from "~/pinHoverBridge";
 
 const HOST_CLASS = "roamjs-outline-pin-host";
 const CONTROL_CLASS = "roamjs-outline-pin-control";
@@ -15,6 +16,7 @@ export const OUTLINE_PIN_STYLES = `
   #right-sidebar .${HOST_CLASS} > .${CONTROL_CLASS}, .roam-right-sidebar-content .${HOST_CLASS} > .${CONTROL_CLASS} { left: 0; }
   .${CONTROL_CLASS} > button[aria-pressed="false"][aria-busy="false"] { opacity: 0; pointer-events: none; }
   .${HOST_CLASS}:hover > .${CONTROL_CLASS} > button,
+  .${HOST_CLASS}[data-roamjs-pin-hover] > .${CONTROL_CLASS} > button,
   .${HOST_CLASS}:focus-within > .${CONTROL_CLASS} > button { opacity: 1; pointer-events: auto; }
   .roam-block-container:has(> .${HOST_CLASS})::before { display: none; }
 `;
@@ -30,6 +32,7 @@ export const createOutlinePinControls = ({
   cleanup: () => void;
 } => {
   const controls = new Map<HTMLElement, Control>();
+  const hoverBridge = createPinHoverBridge(`.${HOST_CLASS}`);
   const pendingUids = new Set<string>();
   let latest = { enabled: false, pinnedUids: new Set<string>() };
   let inactive = false;
@@ -55,6 +58,7 @@ export const createOutlinePinControls = ({
   const sync = (args: typeof latest): void => {
     latest = args;
     if (inactive) return;
+    if (!args.enabled) hoverBridge.clear();
     const active = new Set<HTMLElement>();
     if (args.enabled) {
       document
@@ -129,6 +133,7 @@ export const createOutlinePinControls = ({
     sync,
     cleanup: (): void => {
       inactive = true;
+      hoverBridge.cleanup();
       controls.forEach((control, host) => removeControl(host, control));
     },
   };

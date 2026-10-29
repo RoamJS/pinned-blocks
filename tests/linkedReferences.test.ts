@@ -532,7 +532,7 @@ test("near-bullet reference pins remain visible while crossing the gutter", asyn
   });
   await page.addStyleTag({
     content:
-      ".rm-reference-container { margin-left: 100px; } .rm-title-arrow-wrapper { display: flex; min-height: 24px; }",
+      ".rm-reference-container { margin-left: 100px; } .rm-title-arrow-wrapper { display: flex; min-height: 24px; } .rm-reference-item { margin: 4px 0; min-height: 28px; }",
   });
   await page.evaluate("window.controls.sync([], true)");
   for (const selector of [
@@ -584,6 +584,51 @@ test("near-bullet reference pins remain visible while crossing the gutter", asyn
     await expect
       .poll(() => page.evaluate("window.toggleCount"))
       .toBeGreaterThan(0);
+  }
+});
+
+test("reference row pins center on first-line bullets in either placement, including wrapped text", async ({
+  page,
+}) => {
+  await setup(page, section("target123"));
+  await page.addStyleTag({
+    path: "node_modules/@blueprintjs/core/lib/css/blueprint.css",
+  });
+  await page.locator(".rm-block-main").evaluate((el) => {
+    el.insertAdjacentHTML(
+      "afterbegin",
+      '<span class="controls"><span class="rm-bullet__inner">•</span></span>',
+    );
+  });
+  await page.addStyleTag({
+    content: `
+    .rm-reference-container { margin-left: 64px; width: 240px; }
+    .rm-reference-item { margin: 4px 0; }
+    .rm-block-main { display: flex; min-height: 28px; }
+    .controls { display: flex; align-items: center; height: 28px; flex: 0 0 27px; }
+    .rm-bullet__inner { height: 13px; line-height: 13px; }
+    .roam-block { flex: 1; min-width: 0; line-height: 28px; }
+    .bp3-button.bp3-small { min-height: 24px; height: 24px; }
+  `,
+  });
+  const row = page.getByTestId("row-target123-block1234");
+  for (const nearBullets of [false, true]) {
+    await page.evaluate(`window.controls.sync([], ${nearBullets})`);
+    for (const text of [
+      "One line",
+      "A linked reference wrapping onto several lines while its pin stays on the first line",
+    ]) {
+      await row.locator(".roam-block").evaluate((el, text) => {
+        el.textContent = text;
+      }, text);
+      const bullet = (await row.locator(".rm-bullet__inner").boundingBox())!;
+      const button = row.getByRole("button");
+      await row.hover();
+      for (const element of [button, button.locator(".bp3-icon")]) {
+        const box = (await element.boundingBox())!;
+        expect(box.y + box.height / 2).toBe(bullet.y + bullet.height / 2);
+      }
+    }
   }
 });
 

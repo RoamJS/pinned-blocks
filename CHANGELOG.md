@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Centered outline and linked-reference row pins on their bullets and first text line.
+
 - Kept pin controls inside the main pane at narrow page widths without shifting page content or covering collapse carets.
 
 - Kept pin controls visible while moving between blocks and their pins. Unpinned controls stay light gray, pinned controls are dark gray, and button hover adds a subtle background.

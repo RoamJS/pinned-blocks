@@ -137,6 +137,52 @@ test("outline pins remain visible across the gap between the block and button", 
   await expect(page.locator("[data-roamjs-pin-hover]")).toHaveCount(0);
 });
 
+test("outline pin icons and hover backgrounds center on the first-line bullet even when text wraps", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.addStyleTag({
+    path: "node_modules/@blueprintjs/core/lib/css/blueprint.css",
+  });
+  await page
+    .locator(".rm-block-main")
+    .first()
+    .locator(".controls")
+    .evaluate((el) => {
+      el.innerHTML = '<span class="rm-bullet__inner">•</span>';
+    });
+  await page.addStyleTag({
+    content: `
+    .rm-block-main { width: 240px; min-height: 28px; }
+    .controls { display: flex; align-items: center; height: 28px; flex: 0 0 27px; }
+    .rm-bullet__inner { height: 13px; line-height: 13px; }
+    .roam-block { flex: 1; min-width: 0; line-height: 28px; }
+    .bp3-button.bp3-small { min-height: 24px; height: 24px; }
+  `,
+  });
+  await page.evaluate(
+    "window.controls.sync({enabled:true,pinnedUids:new Set()})",
+  );
+  const host = page.locator(".rm-block-main").first();
+  const button = host.getByRole("button");
+  for (const text of [
+    "One line",
+    "A long block that wraps onto multiple lines while the pin stays beside its first line",
+  ]) {
+    await host.locator(".roam-block").evaluate((el, text) => {
+      el.textContent = text;
+    }, text);
+    const bullet = (await host.locator(".rm-bullet__inner").boundingBox())!;
+    for (const target of [host, button]) {
+      await target.hover();
+      for (const element of [button, button.locator(".bp3-icon")]) {
+        const box = (await element.boundingBox())!;
+        expect(box.y + box.height / 2).toBe(bullet.y + bullet.height / 2);
+      }
+    }
+  }
+});
+
 test("disabled mode preserves the outline; enabled buttons reveal on hover and focus", async ({
   page,
 }) => {

@@ -20,4 +20,7 @@ export const pinButtonStyles = (controlClass: string): string => `
     padding-left: 0;
     padding-right: 0;
   }
+  .roam-article[data-roamjs-pin-edge] .${controlClass} {
+    z-index: 11;
+  }
 `;

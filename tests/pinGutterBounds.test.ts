@@ -58,6 +58,27 @@ for (const mode of ["small", "medium"]) {
     page,
   }) => {
     await setup(page, mode);
+    const host = (await page
+      .locator(".roamjs-outline-pin-host")
+      .boundingBox())!;
+    await page.evaluate(({ x, y }) => {
+      const guide = document.createElement("div");
+      guide.className = "rm-multibar";
+      Object.assign(guide.style, {
+        position: "absolute",
+        left: `${x - 6}px`,
+        top: `${y}px`,
+        width: "8px",
+        height: "200px",
+        zIndex: "10",
+      });
+      document.body.append(guide);
+      document.querySelectorAll("button").forEach((button) => {
+        button.onclick = (): void => {
+          button.dataset.clicked = "true";
+        };
+      });
+    }, host);
     const content = await measureContent(page);
     const pane = (await page.locator(".roam-body-main").boundingBox())!;
     const first = page.locator(".roamjs-outline-pin-control > button");
@@ -79,6 +100,8 @@ for (const mode of ["small", "medium"]) {
       expect(box.x).toBeGreaterThan(pane.x);
       expect(box.x).toBe(column);
       expect(box.x + box.width).toBeLessThanOrEqual(caret.x);
+      await button.click();
+      await expect(button).toHaveAttribute("data-clicked", "true");
     }
     expect(await measureContent(page)).toEqual(content);
     await page.evaluate("window.gutter.cleanup()");

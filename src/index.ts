@@ -651,21 +651,10 @@ const initializeExtension = async ({
         return true;
       });
 
-      if (!created) {
-        toast({
-          id: "pinned-blocks-already-pinned",
-          content: "That block is already pinned to its parent.",
-        });
-        return;
-      }
+      if (!created) return;
 
       await synchronizeSharedState();
       scheduleEnforceParent(parentUid);
-      toast({
-        id: "pinned-blocks-pinned",
-        content: "Pinned block to the top of its parent.",
-        intent: "success",
-      });
     } catch (error) {
       console.error(
         "Pinned Blocks failed to create a shared pin record",
@@ -684,20 +673,9 @@ const initializeExtension = async ({
 
     try {
       const removedCount = await enqueueMutation(() => removePinRecords([uid]));
-      if (!removedCount) {
-        toast({
-          id: "pinned-blocks-not-pinned",
-          content: "That block is not pinned.",
-        });
-        return;
-      }
+      if (!removedCount) return;
 
       await synchronizeSharedState();
-      toast({
-        id: "pinned-blocks-unpinned",
-        content: "Unpinned block.",
-        intent: "success",
-      });
     } catch (error) {
       console.error(
         "Pinned Blocks failed to remove a shared pin record",

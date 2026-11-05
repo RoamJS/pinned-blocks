@@ -139,9 +139,6 @@ const PinButton = ({
     aria-busy={pending}
     aria-label={pinned ? "Unpin linked reference" : "Pin linked reference"}
     aria-description="Use the Up and Down arrow keys to move between reference pin controls."
-    title={
-      pinned ? "Unpin linked reference" : "Pin linked reference to the top"
-    }
     onClick={(event): void => {
       event.stopPropagation();
       onClick();

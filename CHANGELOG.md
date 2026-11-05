@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Made pin controls near bullets always available in outlines and linked references, removing the optional setting. Existing saved preferences no longer hide these controls.
+
 - Reserved space for default right-side reference pins so they do not overlap long block text.
 
 - Centered outline and linked-reference row pins on their bullets and first text line.

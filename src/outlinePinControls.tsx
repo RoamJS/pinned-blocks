@@ -12,8 +12,8 @@ export const OUTLINE_PIN_STYLES = `
   .${HOST_CLASS} { position: relative; }
   .${HOST_CLASS}::before { content: ""; position: absolute; top: 0; bottom: 0; left: -24px; width: 24px; }
   .${HOST_CLASS} > .${CONTROL_CLASS} { position: absolute; left: calc(-24px + var(--roamjs-pin-edge-shift, 0px)); top: 2px; z-index: 1; }
-  #right-sidebar .${HOST_CLASS}, .roam-right-sidebar-content .${HOST_CLASS} { padding-left: 24px; }
-  #right-sidebar .${HOST_CLASS} > .${CONTROL_CLASS}, .roam-right-sidebar-content .${HOST_CLASS} > .${CONTROL_CLASS} { left: 0; }
+  #right-sidebar .${HOST_CLASS}, .roam-right-sidebar-content .${HOST_CLASS} { padding-left: 30px; }
+  #right-sidebar .${HOST_CLASS} > .${CONTROL_CLASS}, .roam-right-sidebar-content .${HOST_CLASS} > .${CONTROL_CLASS} { left: 6px; }
   .${CONTROL_CLASS} > button[aria-pressed="false"][aria-busy="false"] { opacity: 0; pointer-events: none; }
   .${HOST_CLASS}:hover > .${CONTROL_CLASS} > button,
   .${HOST_CLASS}[data-roamjs-pin-hover] > .${CONTROL_CLASS} > button,
@@ -112,9 +112,6 @@ export const createOutlinePinControls = ({
               aria-pressed={pinned}
               aria-busy={pending}
               aria-label={pinned ? "Unpin block" : "Pin block"}
-              title={
-                pinned ? "Unpin block" : "Pin block to the top of its parent"
-              }
               onMouseDown={(event): void => event.preventDefault()}
               onClick={(event): void => {
                 event.stopPropagation();

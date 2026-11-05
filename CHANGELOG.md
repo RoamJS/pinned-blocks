@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Removed routine pin/unpin notifications and hover labels, and added breathing room between sidebar pins and the pane edge.
+
 - Made pin controls near bullets always available in outlines and linked references, removing the optional setting. Existing saved preferences no longer hide these controls.
 
 - Reserved space for default right-side reference pins so they do not overlap long block text.

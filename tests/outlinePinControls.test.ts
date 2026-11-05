@@ -273,7 +273,8 @@ test("sidebar controls remain inside the clipped outline", async ({ page }) => {
   const button = page.getByRole("button", { name: "Unpin block", exact: true });
   const host = await page.locator(".roamjs-outline-pin-host").boundingBox();
   const bounds = await button.boundingBox();
-  expect(bounds!.x).toBeGreaterThanOrEqual(host!.x);
+  expect(bounds!.x - host!.x).toBe(6);
+  expect(await button.getAttribute("title")).toBeNull();
   await button.click();
   expect(await page.evaluate("window.clicked")).toBe("block1234");
 });

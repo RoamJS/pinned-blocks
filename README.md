@@ -4,69 +4,32 @@
     <img src="https://avatars.githubusercontent.com/u/138642184" alt="RoamJS Logo" title="RoamJS" align="right" height="60" />
 </a>
 
-**Keep selected child blocks pinned to the top of their current parent, even as blocks move and siblings are reorganized.**
+**Keep important child blocks fixed at the top of their parent, even as new siblings are added above them.**
 
 [![RoamJS](https://roamjs.com/badges/website.svg)](https://roamjs.com/) [![DeepWiki](https://roamjs.com/badges/deepwiki.svg)](https://deepwiki.com/RoamJS/pinned-blocks) [![Slack](https://roamjs.com/badges/slack.svg)](https://roamresearch.slack.com/archives/C016N2B66JU)
 
-## Features
+## Pin blocks
 
-- Pin selected references in the linked reference section to the top of the results.
+Hover over a block or focus it with the keyboard to reveal the pin beside its bullet. Click to pin it; click the dark pin to unpin. Active pins stay visible. You can also use the block context menu or the command palette.
 
-- Pin, unpin, or toggle the focused block from the command palette.
-- Pin or unpin any block from the block context menu.
-- Keep multiple pinned siblings at the top in their current pinned-group order.
-- Drag pinned blocks to reorder them within the pinned group.
-- Move pinned blocks to another parent and keep them pinned in the new pinned group.
-- Reorder the real Roam outline with Roam's native block reorder API; no duplicate shelf or hidden source blocks.
-- Watch pinned parents so regular blocks inserted above or between pinned blocks are moved below the pinned group.
-- Mark pinned blocks with a small pin indicator and stable CSS hooks for custom styling.
-- Share pin state between collaborators through graph-backed records on `roam/js/pinned-blocks`.
+Pinned siblings stay at the top of their parent. Drag them to change their order. Moving a pinned block to another parent keeps it pinned there.
 
-## Linked reference pins
+## Pin linked references
 
-Hover over a linked reference or focus it with the keyboard to reveal its pin button. Active pins stay visible. Use the pin button beside a linked reference to keep it at the top of that
-page's linked reference results. Click the active pin button to unpin it.
-Pinned results initially appear expanded at the top, without a section heading or count. Use the caret beside a pinned block’s source-page title to collapse or expand that reference. Collapsing keeps the title visible and the block pinned; the collapsed state lasts while the pinned result remains on screen.
+Use the pin beside a linked reference to keep it at the top of that page or block's results. These pins affect the reference results, without changing source block order. References in page titles can be pinned beside their source heading, separately from individual blocks.
 
-Pinned results show a clickable source page title (Shift-click opens the sidebar) and retain Roam's native block controls. References within page titles can also be pinned using the pin beside their source heading. A pinned title stays separate from pins on individual blocks from that page. Pinned results follow the order in which their pins are saved. The pin button shows a loading state while saving.
+- Click an active pin to unpin the reference.
+- Use the caret beside a pinned result's source title to collapse or expand it. This lasts while the result remains on screen.
+- Click a source title to open its page; Shift-click opens it in the sidebar.
+- Use Up and Down on a pin button to move between reference pin controls.
 
-Daily note pages and the Daily Notes view are supported, including collapsed reference groups. Use the Up and Down arrow keys on a pin button
-to move between the pin controls in their displayed order. Tab visits the pinned section first, then the remaining native reference controls.
+Roam's include/remove filters still apply. Daily note pages and the Daily Notes view are supported. If a pinned result fails to render, its original stays available and the pinned result offers **Retry**.
 
-Reference pins are saved separately for each target page or block under
-`roam/js/pinned-blocks` and shared with collaborators running the extension.
-They change the displayed reference order without changing source block order.
-Saved reference pins render immediately at the top, including references Roam has not lazy-loaded yet. Once the pinned copy has rendered successfully, the extension hides its original row when Roam loads it. While rendering is pending or has failed, the original row remains available. A failed pinned copy offers a Retry button. Unpinning removes the top copy and restores the original row. Roam's include/remove filters still apply to pinned copies. Deleted blocks and blocks that no longer reference the target are not shown.
+## Shared graphs and storage
 
-## Pin controls near bullets
+Pins are shared with collaborators running Pinned Blocks. Outline pins change the real sibling order, so collaborators without the extension see the reordering but not the pin icons.
 
-Pin or unpin outline blocks using buttons beside their bullets. Linked-reference buttons also appear on the left, near their bullets (or beside the heading for page-title references). These controls are always available: unpinned controls appear on hover or keyboard focus, and active pins stay visible. No setting needs to be enabled.
-
-Linked-reference pins share the outline pin column. The controls sit outside the reference content without shifting source headings, bullets, or text, and align with the first line when a block wraps.
-
-Unpinned icons are light gray; pinned icons are dark gray. Hovering over or focusing a pin adds a subtle background. Controls stay visible as you move from a block to its pin. At narrow pane edges, the buttons become slightly narrower and move inward to stay clear of the sidebar and collapse carets.
-
-Outline pins reorder siblings under their parent; linked-reference pins affect only the target's reference results. Existing saved pin records are preserved.
-
-## Multiplayer graphs
-
-Collaborators running Pinned Blocks in the same graph share the same pin records
-and pinned order. Pin membership is stored under `roam/js/pinned-blocks`, while
-order follows the real Roam outline.
-
-Pinned Blocks changes real sibling order with Roam's native reorder API, so its
-changes are also visible to collaborators who do not run the extension. Those
-collaborators will not see pin indicators and may not understand why a block
-moves back into the pinned group.
-
-## Storage
-
-Pinned Blocks creates `roam/js/pinned-blocks` with a notice explaining that the
-page is extension-managed. Each pin is stored as a separate child record using
-the `roamjs-pinned-blocks` block-props namespace. The page and notice remain
-when there are no pins; pin-data children are removed.
-
-Pinned Blocks does not use browser local storage.
+Pin data is saved on the extension-managed `roam/js/pinned-blocks` page. Leave that page and its records intact. Reference pins are saved separately for each target page or block.
 
 ## Commands
 
@@ -74,15 +37,10 @@ Pinned Blocks does not use browser local storage.
 - `Pinned Blocks: Pin Focused Block`
 - `Pinned Blocks: Unpin Focused Block`
 
-## Styling
+<details>
+<summary>Custom styling</summary>
 
-Pinned Blocks adds these classes to the rendered outline:
-
-- `.roamjs-pinned-blocks-block`
-- `.roamjs-pinned-blocks-block-pinned`
-
-The default indicator is rendered on `.roamjs-pinned-blocks-block-pinned::before`
-and can be adjusted with CSS variables:
+Outline blocks expose `.roamjs-pinned-blocks-block` and `.roamjs-pinned-blocks-block-pinned`. The default indicator uses `.roamjs-pinned-blocks-block-pinned::before` with these CSS variables:
 
 - `--roamjs-pinned-blocks-indicator-color`
 - `--roamjs-pinned-blocks-indicator-size`
@@ -91,3 +49,5 @@ and can be adjusted with CSS variables:
 - `--roamjs-pinned-blocks-indicator-top`
 - `--roamjs-pinned-blocks-indicator-opacity`
 - `--roamjs-pinned-blocks-indicator-z-index`
+
+</details>

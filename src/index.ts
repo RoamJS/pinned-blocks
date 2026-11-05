@@ -65,7 +65,6 @@ const PINNED_BLOCK_CLASS = "roamjs-pinned-blocks-block";
 const PINNED_BLOCK_ACTIVE_CLASS = "roamjs-pinned-blocks-block-pinned";
 const INDICATOR_CLASS = "roamjs-pinned-blocks-indicator";
 const UID_SUFFIX_REGEX = /[A-Za-z0-9_-]{9}$/;
-const HOVER_PIN_SETTING = "hover-pin-controls";
 
 const createRoamPage = async (title: string): Promise<string> => {
   const uid = window.roamAlphaAPI.util.generateUID();
@@ -211,7 +210,6 @@ const initializeExtension = async ({
 }: OnloadArgs & { isCancelled: () => boolean }): Promise<() => void> => {
   let currentSettings: PinnedBlocksByParent = {};
   let referencePins: ReferencePin[] = [];
-  let hoverPinControls = extensionAPI.settings.get(HOVER_PIN_SETTING) === true;
   let configWatcherCleanup: (() => void) | null = null;
   let configWatcherPageUid = "";
   const parentWatcherCleanups = new Map<string, () => void>();
@@ -410,9 +408,9 @@ const initializeExtension = async ({
   const syncPinnedIndicators = (): void => {
     indicatorFrame = null;
     if (isInactive()) return;
-    referenceControls.sync(referencePins, hoverPinControls);
+    referenceControls.sync(referencePins, true);
     const pinnedUids = getPinnedUids(currentSettings);
-    outlineControls.sync({ enabled: hoverPinControls, pinnedUids });
+    outlineControls.sync({ enabled: true, pinnedUids });
     pinGutterBounds.refresh();
 
     document
@@ -745,8 +743,7 @@ const initializeExtension = async ({
           }
         });
         await synchronizeSharedState();
-        if (!isInactive())
-          referenceControls.sync(referencePins, hoverPinControls);
+        if (!isInactive()) referenceControls.sync(referencePins, true);
       } catch (error) {
         console.error(
           "Pinned Blocks failed to change a linked reference pin",
@@ -808,26 +805,6 @@ const initializeExtension = async ({
     await enqueueMutation(reconcileConfigRecords);
     await synchronizeSharedState();
     if (isInactive()) return cleanup;
-
-    extensionAPI.settings.panel.create({
-      tabTitle: "Pinned Blocks",
-      settings: [
-        {
-          id: HOVER_PIN_SETTING,
-          name: "Show pin controls near bullets",
-          description:
-            "Show pin and unpin buttons near block bullets on hover or keyboard focus, in outlines and linked references.",
-          action: {
-            type: "switch",
-            onChange: (event): void => {
-              hoverPinControls =
-                typeof event === "boolean" ? event : event.target.checked;
-              scheduleIndicatorSync();
-            },
-          },
-        },
-      ],
-    });
 
     mutationObserver = observePinStructure({
       root: document.body,

@@ -8,6 +8,8 @@
 
 [![RoamJS](https://roamjs.com/badges/website.svg)](https://roamjs.com/) [![DeepWiki](https://roamjs.com/badges/deepwiki.svg)](https://deepwiki.com/RoamJS/pinned-blocks) [![Slack](https://roamjs.com/badges/slack.svg)](https://roamresearch.slack.com/archives/C016N2B66JU)
 
+https://github.com/user-attachments/assets/19d25f0d-1899-4fec-acee-234ea9bebcee
+
 ## Pin blocks
 
 Hover over a block or focus it with the keyboard to reveal the pin beside its bullet. Click to pin it; click the dark pin to unpin. Active pins stay visible. You can also use the block context menu or the command palette.
@@ -38,7 +40,7 @@ Pin data is saved on the extension-managed `roam/js/pinned-blocks` page. Leave t
 - `Pinned Blocks: Unpin Focused Block`
 
 <details>
-<summary>Custom styling</summary>
+<summary><h2>Custom styling</h2></summary>
 
 Outline blocks expose `.roamjs-pinned-blocks-block` and `.roamjs-pinned-blocks-block-pinned`. The default indicator uses `.roamjs-pinned-blocks-block-pinned::before` with these CSS variables:
 
@@ -49,5 +51,12 @@ Outline blocks expose `.roamjs-pinned-blocks-block` and `.roamjs-pinned-blocks-b
 - `--roamjs-pinned-blocks-indicator-top`
 - `--roamjs-pinned-blocks-indicator-opacity`
 - `--roamjs-pinned-blocks-indicator-z-index`
+
+</details>
+
+<details>
+<summary><h2>Demo</h2></summary>
+
+https://github.com/user-attachments/assets/60703fda-3482-40e4-a072-d5c987d04601
 
 </details>

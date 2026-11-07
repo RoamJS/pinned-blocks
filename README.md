@@ -39,8 +39,10 @@ Pin data is saved on the extension-managed `roam/js/pinned-blocks` page. Leave t
 - `Pinned Blocks: Pin Focused Block`
 - `Pinned Blocks: Unpin Focused Block`
 
+## Custom Styling
+
 <details>
-<summary><h2>Custom styling</h2></summary>
+<summary>CSS classes and variables</summary>
 
 Outline blocks expose `.roamjs-pinned-blocks-block` and `.roamjs-pinned-blocks-block-pinned`. The default indicator uses `.roamjs-pinned-blocks-block-pinned::before` with these CSS variables:
 
@@ -54,8 +56,10 @@ Outline blocks expose `.roamjs-pinned-blocks-block` and `.roamjs-pinned-blocks-b
 
 </details>
 
+## Demo
+
 <details>
-<summary><h2>Demo</h2></summary>
+<summary>video</summary>
 
 https://github.com/user-attachments/assets/60703fda-3482-40e4-a072-d5c987d04601
 

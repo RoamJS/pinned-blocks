@@ -37,10 +37,10 @@ export const LINKED_REFERENCE_STYLES = `
   .roamjs-reference-pin-control > button[aria-pressed="false"][aria-busy="false"] { opacity: 0; pointer-events: none; }
   .roamjs-reference-pin-row:hover > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-row[data-roamjs-pin-hover] > .roamjs-reference-pin-control > button,
-  .roamjs-reference-pin-row:focus-within > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-title-row:hover > .roamjs-reference-pin-control > button,
   .roamjs-reference-pin-title-row[data-roamjs-pin-hover] > .roamjs-reference-pin-control > button,
-  .roamjs-reference-pin-title-row:focus-within > .roamjs-reference-pin-control > button { opacity: 1; pointer-events: auto; }
+  .roamjs-reference-pin-row > .roamjs-reference-pin-control > button:focus-visible,
+  .roamjs-reference-pin-title-row > .roamjs-reference-pin-control > button:focus-visible { opacity: 1; pointer-events: auto; }
   .roamjs-reference-pin-page .rm-ref-page-view-title { min-width: 0; overflow-wrap: anywhere; }
   .roamjs-reference-pin-page .rm-caret { cursor: pointer; flex-shrink: 0; }
   .roamjs-reference-pin-title-row { position: relative; }

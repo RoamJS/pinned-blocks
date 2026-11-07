@@ -2,6 +2,8 @@
 
 ## 1.0.0
 
+- Kept inactive hover pins hidden during keyboard focus and editing in outlines and linked references. Mouse hover and direct keyboard focus on a pin button still reveal it.
+
 - Removed routine pin/unpin notifications and hover labels, and added breathing room between sidebar pins and the pane edge.
 
 - Made pin controls near bullets always available in outlines and linked references, removing the optional setting. Existing saved preferences no longer hide these controls.

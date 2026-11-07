@@ -673,7 +673,7 @@ test("reference row pins center on first-line bullets in either placement, inclu
   }
 });
 
-test("inactive pins reveal on row hover and keyboard focus without moving content", async ({
+test("inactive pins reveal on hover or direct button focus, not editing, without moving content", async ({
   page,
 }) => {
   await setup(page, section("target123", "2 Linked References", "other1234"));
@@ -687,13 +687,26 @@ test("inactive pins reveal on row hover and keyboard focus without moving conten
   await expect(button).toHaveCSS("opacity", "0");
   await expect(button).toHaveCSS("pointer-events", "none");
   await expect(pinned).toHaveCSS("opacity", "1");
+  const editor = row.locator(".roam-block");
+  await editor.evaluate((element) => {
+    element.setAttribute("contenteditable", "true");
+  });
+  await editor.focus();
+  await page.keyboard.type("Keyboard editing");
+  await expect(editor).toBeFocused();
+  await expect(button).toHaveCSS("opacity", "0");
+  await expect(button).toHaveCSS("pointer-events", "none");
   const before = await row.locator(".rm-reference-item").boundingBox();
   await row.locator(".roam-block").hover();
   await expect(button).toHaveCSS("opacity", "1");
   await expect(button).toHaveCSS("pointer-events", "auto");
   expect(await row.locator(".rm-reference-item").boundingBox()).toEqual(before);
   await page.mouse.move(0, 0);
+  await expect(editor).toBeFocused();
   await expect(button).toHaveCSS("opacity", "0");
+  await editor.evaluate((element) =>
+    element.removeAttribute("contenteditable"),
+  );
   await pinned.focus();
   await page.keyboard.press("Tab");
   await expect(button).toBeFocused();
@@ -1071,7 +1084,14 @@ test("page-title references pin independently of block results and keep source l
   const title = page.locator(
     ".rm-ref-page-view:not(.roamjs-reference-pin-page) > .rm-title-arrow-wrapper",
   );
+  const sourceLink = title.locator("a");
+  await sourceLink.evaluate((element) => element.setAttribute("tabindex", "0"));
+  await page.mouse.move(0, 0);
+  await sourceLink.focus();
+  await expect(sourceLink).toBeFocused();
+  await expect(title.getByRole("button")).toHaveCSS("opacity", "0");
   await title.hover();
+  await expect(title.getByRole("button")).toHaveCSS("opacity", "1");
   await title
     .getByRole("button", { name: "Pin linked reference", exact: true })
     .click();

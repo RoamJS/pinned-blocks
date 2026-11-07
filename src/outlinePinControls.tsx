@@ -17,7 +17,7 @@ export const OUTLINE_PIN_STYLES = `
   .${CONTROL_CLASS} > button[aria-pressed="false"][aria-busy="false"] { opacity: 0; pointer-events: none; }
   .${HOST_CLASS}:hover > .${CONTROL_CLASS} > button,
   .${HOST_CLASS}[data-roamjs-pin-hover] > .${CONTROL_CLASS} > button,
-  .${HOST_CLASS}:focus-within > .${CONTROL_CLASS} > button { opacity: 1; pointer-events: auto; }
+  .${HOST_CLASS} > .${CONTROL_CLASS} > button:focus-visible { opacity: 1; pointer-events: auto; }
   .roam-block-container:has(> .${HOST_CLASS})::before { display: none; }
 `;
 

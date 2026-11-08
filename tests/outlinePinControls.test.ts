@@ -183,7 +183,7 @@ test("outline pin icons and hover backgrounds center on the first-line bullet ev
   }
 });
 
-test("disabled mode preserves the outline; enabled buttons reveal on hover and focus", async ({
+test("disabled mode preserves the outline; pins reveal on hover or direct button focus, not editing", async ({
   page,
 }) => {
   await setup(page);
@@ -198,9 +198,25 @@ test("disabled mode preserves the outline; enabled buttons reveal on hover and f
   await expect(button).toHaveCount(1);
   await page.locator("#outside").hover();
   await expect(button).toHaveCSS("opacity", "0");
+  const editor = page.locator("#block-input-block1234");
+  await editor.evaluate((element) => {
+    const textarea = document.createElement("textarea");
+    textarea.id = element.id;
+    textarea.className = "rm-block-input";
+    textarea.value = element.textContent || "";
+    element.replaceWith(textarea);
+  });
+  await editor.focus();
+  await page.keyboard.type("Keyboard editing");
+  await expect(editor).toBeFocused();
+  await expect(button).toHaveCSS("opacity", "0");
+  await expect(button).toHaveCSS("pointer-events", "none");
   await page.locator(".rm-block-main").first().hover();
   await expect(button).toHaveCSS("opacity", "1");
+  await expect(button).toHaveCSS("pointer-events", "auto");
   await page.locator("#outside").hover();
+  await expect(editor).toBeFocused();
+  await expect(button).toHaveCSS("opacity", "0");
   await button.focus();
   await expect(button).toHaveCSS("opacity", "1");
   await page.keyboard.press("Enter");
@@ -211,6 +227,10 @@ test("disabled mode preserves the outline; enabled buttons reveal on hover and f
   await expect(
     page.getByRole("button", { name: "Unpin block", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
+  await editor.focus();
+  await expect(
+    page.getByRole("button", { name: "Unpin block", exact: true }),
+  ).toHaveCSS("opacity", "1");
 });
 
 test("reused rows target their current UID and pending clicks are serialized", async ({

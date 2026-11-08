@@ -12,7 +12,7 @@ https://github.com/user-attachments/assets/19d25f0d-1899-4fec-acee-234ea9bebcee
 
 ## Pin blocks
 
-Hover over a block or focus it with the keyboard to reveal the pin beside its bullet. Click to pin it; click the dark pin to unpin. Active pins stay visible. You can also use the block context menu or the command palette.
+Hover over a block to reveal the pin beside its bullet. Focusing or editing the block with the keyboard does not reveal the pin. Click to pin it; click the dark pin to unpin. Active pins stay visible. You can also focus the pin button directly with the keyboard, or use the block context menu or the command palette.
 
 Pinned siblings stay at the top of their parent. Drag them to change their order. Moving a pinned block to another parent keeps it pinned there.
 

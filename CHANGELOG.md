@@ -4,6 +4,8 @@
 
 - Kept outline bullets clickable in narrow panes when a theme moves linked references closer to the left edge.
 
+- Kept linked-reference pins and unpin actions on the current sidebar target when Roam reuses its existing reference rows.
+
 - Kept inactive hover pins hidden during keyboard focus and editing in outlines and linked references. Mouse hover and direct keyboard focus on a pin button still reveal it.
 
 - Removed routine pin/unpin notifications and hover labels, and added breathing room between sidebar pins and the pane edge.

@@ -17,7 +17,7 @@ const script = buildSync({
       getSidebarWindowFilters: args => {window.sidebarFilterArgs=args;return window.sidebarFilters || {}}
     } } };
     window.controls = createLinkedReferenceControls({
-      readReference: pin => pin.blockUid === 'title1234' ? ({sourceTitle:'Title [[Target]]', sourceUid:pin.blockUid, isPage:true, titles:['Title [[Target]]', 'Target']}) : window.missingPins?.includes(pin.blockUid) ? null : ({ sourceTitle: 'Source page', sourceUid: 'source123', titles: ['Source page', 'Tag'] }),
+      readReference: pin => { window.referenceReads = (window.referenceReads || 0) + 1; return pin.blockUid === 'title1234' ? ({sourceTitle:'Title [[Target]]', sourceUid:pin.blockUid, isPage:true, titles:['Title [[Target]]', 'Target']}) : window.missingPins?.includes(pin.blockUid) ? null : ({ sourceTitle: 'Source page', sourceUid: 'source123', titles: ['Source page', 'Tag'] }); },
       renderBlock: async ({uid,el,"zoom-path?":zoomPath}) => { window.lastZoomPath=zoomPath; if (window.failRender) throw new Error("Injected render failure"); if (window.holdRender) await new Promise(resolve => {window.finishRender = resolve}); el.innerHTML = '<div class="roam-block-container" data-block-uid="'+uid+'">Rendered '+uid+'</div>'; window.renders = (window.renders || 0) + 1; },
       unmountBlock: async ({el}) => {el.innerHTML = ''; window.unmounts = (window.unmounts || 0) + 1},
       togglePin: async pin => {window.clickedPin = pin; window.toggleCount = (window.toggleCount || 0) + 1; if(window.holdToggle) await new Promise(resolve => {window.finishToggle = resolve})}
@@ -967,7 +967,7 @@ for (const { label, field, type } of [
   { label: "block", field: "block-uid", type: "block" },
   { label: "block mentions", field: "mentions-uid", type: "mentions" },
 ]) {
-  test(`sidebar ${label} navigation trusts window identity over retained rows and unpins the destination`, async ({
+  test(`sidebar ${label} poll follows window metadata without DOM changes and unpins the destination`, async ({
     page,
   }) => {
     await setup(
@@ -1002,7 +1002,7 @@ for (const { label, field, type } of [
         ];
         state.pins = [
           { targetUid: "target123", blockUid: "block1234" },
-          { targetUid: "target456", blockUid: "block1234" },
+          { targetUid: "target456", blockUid: "other1234" },
         ];
         state.controls.sync(state.pins);
       },
@@ -1015,10 +1015,22 @@ for (const { label, field, type } of [
       '#right-sidebar [data-reference-pin-uid="block1234"]',
     );
     await expect(sidebarPin).toContainText("Rendered block1234");
-    await page.evaluate(
-      `window.sidebarWindow['${field}']='target456';window.controls.sync(window.pins)`,
+    // Let the production poll cache the original target before changing metadata only.
+    await page.waitForTimeout(1100);
+    const url = page.url();
+    const nativeRows = await page
+      .locator("#right-sidebar .rm-reference-item")
+      .count();
+    await page.evaluate(`window.sidebarWindow['${field}']='target456'`);
+    const destinationPin = page.locator(
+      '#right-sidebar [data-reference-pin-uid="other1234"]',
     );
-    await expect(sidebarPin).toContainText("Rendered block1234");
+    await expect(destinationPin).toContainText("Rendered other1234");
+    await expect(sidebarPin).toHaveCount(0);
+    expect(page.url()).toBe(url);
+    expect(
+      await page.locator("#right-sidebar .rm-reference-item").count(),
+    ).toBe(nativeRows);
     await expect(
       page
         .locator("#right-sidebar")
@@ -1028,20 +1040,48 @@ for (const { label, field, type } of [
     expect(await page.evaluate("window.sidebarFilterArgs")).toEqual({
       window: { type, "block-uid": "target456" },
     });
-    await sidebarPin
+    await destinationPin
       .getByRole("button", { name: "Unpin linked reference", exact: true })
       .click();
     expect(await page.evaluate("window.clickedPin")).toEqual({
       targetUid: "target456",
-      blockUid: "block1234",
+      blockUid: "other1234",
     });
     await page.evaluate(
       `window.pins=window.pins.filter(pin=>pin.targetUid!=='target456');document.querySelector('#right-sidebar .rm-ref-page-view:not(.roamjs-reference-pin-page)').replaceChildren();window.controls.sync(window.pins)`,
     );
-    await expect(sidebarPin).toHaveCount(0);
+    await expect(destinationPin).toHaveCount(0);
     await expect(mainPin).toBeVisible();
+    expect(await page.evaluate("window.pins")).toEqual([
+      { targetUid: "target123", blockUid: "block1234" },
+    ]);
   });
 }
+
+test("unchanged sidebar polling and ordinary typing do not repeat reference detail reads", async ({
+  page,
+}) => {
+  await setup(
+    page,
+    '<textarea aria-label="Unrelated block"></textarea><div id="right-sidebar"><div class="rm-sidebar-window" id="sidebar-window-sidebar-mentions-target123">' +
+      section("target123") +
+      "</div></div>",
+  );
+  await page.evaluate(
+    "window.controls.sync([{targetUid:'target123',blockUid:'block1234'}])",
+  );
+  await expect(
+    page.locator('[data-reference-pin-uid="block1234"]'),
+  ).toBeVisible();
+  await page.waitForTimeout(1100);
+  const reads = await page.evaluate("window.referenceReads");
+  expect(reads).toBeGreaterThan(0);
+  await page
+    .getByRole("textbox", { name: "Unrelated block" })
+    .type("Ordinary editing");
+  await page.waitForTimeout(1100);
+  expect(await page.evaluate("window.referenceReads")).toBe(reads);
+});
 
 test("pinned references stay visible without a group collapse control", async ({
   page,

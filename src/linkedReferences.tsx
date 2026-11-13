@@ -843,7 +843,7 @@ export const createLinkedReferenceControls = ({
     });
   };
   let filterSnapshot = "";
-  // Roam can change filters without changing any currently loaded result rows.
+  // Roam can change filters or reuse a sidebar target without changing its rows.
   const filterPoll = window.setInterval(() => {
     if (inactive) return;
     const snapshot = JSON.stringify([
@@ -851,7 +851,12 @@ export const createLinkedReferenceControls = ({
       Array.from(
         document.querySelectorAll<HTMLElement>(".rm-mentions"),
       ).flatMap((list) => {
-        const targetUid = targets.get(list);
+        const sidebarWindow = getSidebarWindow(list);
+        const targetUid =
+          sidebarWindow?.["page-uid"] ||
+          sidebarWindow?.["block-uid"] ||
+          sidebarWindow?.["mentions-uid"] ||
+          targets.get(list);
         return targetUid ? [[targetUid, getFilters(list, targetUid)]] : [];
       }),
     ]);

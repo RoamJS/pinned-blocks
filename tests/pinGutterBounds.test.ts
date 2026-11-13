@@ -84,10 +84,7 @@ for (const mode of ["small", "medium"]) {
     const first = page.locator(".roamjs-outline-pin-control > button");
     expect((await first.boundingBox())!.x).toBeLessThan(pane.x);
     await page.evaluate("window.gutter.refresh()");
-    await expect(page.locator(".roam-article")).toHaveAttribute(
-      "data-roamjs-pin-edge",
-      "",
-    );
+    await expect(page.locator("[data-roamjs-pin-edge]")).toHaveCount(3);
     const buttons = await page
       .locator(
         ".roamjs-outline-pin-control > button, .roamjs-reference-pin-control > button",
@@ -111,13 +108,47 @@ for (const mode of ["small", "medium"]) {
   });
 }
 
+test("a reference closer to the pane edge does not push outline pins over native controls", async ({
+  page,
+}) => {
+  await setup(page, "small");
+  await page.addStyleTag({
+    content: ".roamjs-reference-pin-row { margin-left: -30px; }",
+  });
+  const caret = page.locator(".rm-caret");
+  await caret.evaluate((el) => {
+    el.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      el.setAttribute("data-menu-open", "");
+    });
+  });
+  const outline = page.locator(".roamjs-outline-pin-control > button");
+  const reference = page.locator(
+    ".roamjs-reference-pin-row .roamjs-reference-pin-control > button",
+  );
+  await page.evaluate("window.gutter.refresh()");
+  await expect(page.locator("[data-roamjs-pin-edge]")).toHaveCount(3);
+  const outlineBox = (await outline.boundingBox())!;
+  const referenceBox = (await reference.boundingBox())!;
+  const pane = (await page.locator(".roam-body-main").boundingBox())!;
+  expect(outlineBox.x).toBe(pane.x + 1);
+  expect(referenceBox.x).toBe(pane.x + 1);
+  expect(outlineBox.x + outlineBox.width).toBeLessThanOrEqual(
+    (await caret.boundingBox())!.x,
+  );
+  await caret.click({ button: "right" });
+  await expect(caret).toHaveAttribute("data-menu-open", "");
+  await reference.click();
+  await expect(reference).toBeFocused();
+});
+
 test("gutter responds to pane resize and width-mode changes and handles reference-only pages", async ({
   page,
 }) => {
   await setup(page, "small");
   await page.evaluate("window.gutter.refresh()");
-  const article = page.locator(".roam-article");
-  await expect(article).toHaveAttribute("data-roamjs-pin-edge", "");
+  const shifted = page.locator("[data-roamjs-pin-edge]");
+  await expect(shifted).toHaveCount(3);
   await page.locator(".roam-body-main").evaluate((el) => {
     (el as HTMLElement).style.width = "1100px";
   });
@@ -125,10 +156,10 @@ test("gutter responds to pane resize and width-mode changes and handles referenc
   await page.locator(".rm-article-wrapper").evaluate((el) => {
     el.className = "rm-article-wrapper rm-spacing--medium";
   });
-  await expect(article).toHaveAttribute("data-roamjs-pin-edge", "");
+  await expect(shifted).toHaveCount(3);
   await page.locator(".roamjs-outline-pin-host").evaluate((el) => el.remove());
   await page.evaluate("window.gutter.refresh()");
-  await expect(article).toHaveAttribute("data-roamjs-pin-edge", "");
+  await expect(shifted).toHaveCount(2);
   const pane = (await page.locator(".roam-body-main").boundingBox())!;
   for (const button of await page
     .locator(".roamjs-reference-pin-control > button")

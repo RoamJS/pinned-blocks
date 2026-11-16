@@ -8,7 +8,7 @@
 
 [![RoamJS](https://roamjs.com/badges/website.svg)](https://roamjs.com/) [![DeepWiki](https://roamjs.com/badges/deepwiki.svg)](https://deepwiki.com/RoamJS/pinned-blocks) [![Slack](https://roamjs.com/badges/slack.svg)](https://roamresearch.slack.com/archives/C016N2B66JU)
 
-https://github.com/user-attachments/assets/19d25f0d-1899-4fec-acee-234ea9bebcee
+https://github.com/user-attachments/assets/2f4ade40-c7b8-4b02-ab9d-833a18860d2c
 
 ## Pin blocks
 
@@ -61,6 +61,6 @@ Outline blocks expose `.roamjs-pinned-blocks-block` and `.roamjs-pinned-blocks-b
 <details>
 <summary>video</summary>
 
-https://github.com/user-attachments/assets/60703fda-3482-40e4-a072-d5c987d04601
+https://github.com/user-attachments/assets/7c5ed69d-ef2e-477a-b35f-d98b10ccba1c
 
 </details>

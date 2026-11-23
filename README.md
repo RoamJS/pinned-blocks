@@ -6,7 +6,7 @@
 
 **Keep important child blocks fixed at the top of their parent, even as new siblings are added above them.**
 
-[![RoamJS](https://roamjs.com/badges/website.svg)](https://roamjs.com/) [![DeepWiki](https://roamjs.com/badges/deepwiki.svg)](https://deepwiki.com/RoamJS/pinned-blocks) [![Slack](https://roamjs.com/badges/slack.svg)](https://roamresearch.slack.com/archives/C016N2B66JU)
+[![RoamJS](https://roamjs.com/badges/website.svg)](https://roamjs.com/) [![DeepWiki](https://roamjs.com/badges/deepwiki.svg)](https://deepwiki.com/RoamJS/pinned-blocks) [![#roam-js on Slack](https://roamjs.com/badges/slack.svg)](https://roamresearch.slack.com/archives/C016N2B66JU)
 
 https://github.com/user-attachments/assets/2f4ade40-c7b8-4b02-ab9d-833a18860d2c
 
